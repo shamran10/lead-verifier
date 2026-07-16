@@ -12,7 +12,7 @@ function errorResponse(error: unknown) {
     return Response.json({ error: error.message }, { status: error.status });
   }
   return Response.json(
-    { error: "Could not update batch verification." },
+    { error: "Internal server error." },
     { status: 500 },
   );
 }
@@ -33,10 +33,10 @@ export async function POST(
   request: Request,
   context: RouteContext<"/api/batches/[batchId]/verification">,
 ) {
-  const unauthorized = await authorizeCreditSpendingRequest(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const unauthorized = await authorizeCreditSpendingRequest(request);
+    if (unauthorized) return unauthorized;
+
     const { batchId } = await context.params;
     return Response.json(await startBatchVerification(batchId));
   } catch (error) {

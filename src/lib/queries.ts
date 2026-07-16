@@ -22,6 +22,7 @@ export type BatchDetail = BatchListItem & {
 export const BATCH_RESULT_FILTERS = [
   "all",
   "valid",
+  "duplicate_email",
   "no_valid_email",
   "errors",
   "pending",
@@ -32,6 +33,7 @@ export type BatchResultFilter = (typeof BATCH_RESULT_FILTERS)[number];
 export type BatchOutcomeCounts = {
   totalFounders: number;
   validEmails: number;
+  duplicateEmails: number;
   noValidEmails: number;
   verificationErrors: number;
   pendingFounders: number;
@@ -176,18 +178,27 @@ export async function getBatchDetails(
     return query;
   };
 
-  const [totalResult, validResult, noValidResult, errorResult, pendingResult] =
+  const [
+    totalResult,
+    validResult,
+    duplicateEmailResult,
+    noValidResult,
+    errorResult,
+    pendingResult,
+  ] =
     await Promise.all([
       founderCountQuery(),
       founderCountQuery("valid"),
+      founderCountQuery("duplicate_email"),
       founderCountQuery("no_valid_email"),
-      founderCountQuery("verification_error"),
+      founderCountQuery("error"),
       founderCountQuery("pending"),
     ]);
 
   const countError =
     totalResult.error ??
     validResult.error ??
+    duplicateEmailResult.error ??
     noValidResult.error ??
     errorResult.error ??
     pendingResult.error;
@@ -196,6 +207,7 @@ export async function getBatchDetails(
   const counts: BatchOutcomeCounts = {
     totalFounders: totalResult.count ?? 0,
     validEmails: validResult.count ?? 0,
+    duplicateEmails: duplicateEmailResult.count ?? 0,
     noValidEmails: noValidResult.count ?? 0,
     verificationErrors: errorResult.count ?? 0,
     pendingFounders: pendingResult.count ?? 0,
@@ -256,13 +268,14 @@ export async function getBatchDetails(
 }
 
 function filterToFounderStatus(filter: BatchResultFilter): FounderStatus | null {
-  if (filter === "errors") return "verification_error";
+  if (filter === "errors") return "error";
   if (filter === "all") return null;
   return filter;
 }
 
 function filteredTotal(counts: BatchOutcomeCounts, filter: BatchResultFilter) {
   if (filter === "valid") return counts.validEmails;
+  if (filter === "duplicate_email") return counts.duplicateEmails;
   if (filter === "no_valid_email") return counts.noValidEmails;
   if (filter === "errors") return counts.verificationErrors;
   if (filter === "pending") return counts.pendingFounders;
@@ -273,6 +286,7 @@ function emptyOutcomeCounts(): BatchOutcomeCounts {
   return {
     totalFounders: 0,
     validEmails: 0,
+    duplicateEmails: 0,
     noValidEmails: 0,
     verificationErrors: 0,
     pendingFounders: 0,

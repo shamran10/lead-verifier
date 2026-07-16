@@ -22,6 +22,7 @@ type Props = {
 const FILTERS: Array<{ value: BatchResultFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "valid", label: "Valid" },
+  { value: "duplicate_email", label: "Duplicate email" },
   { value: "no_valid_email", label: "No valid email" },
   { value: "errors", label: "Errors" },
   { value: "pending", label: "Pending" },
@@ -51,6 +52,7 @@ export function BatchVerificationResults({
       <div className="results-summary-grid">
         <SummaryCard label="Total founders" value={counts.totalFounders} />
         <SummaryCard label="Valid emails" value={counts.validEmails} tone="success" />
+        <SummaryCard label="Duplicate emails" value={counts.duplicateEmails} tone="warning" />
         <SummaryCard label="No valid email" value={counts.noValidEmails} tone="warning" />
         <SummaryCard label="Verification errors" value={counts.verificationErrors} tone="error" />
         <SummaryCard label="Pending / verifying" value={counts.pendingFounders} tone="active" />
@@ -252,6 +254,7 @@ function pageHref(batchId: string, filter: BatchResultFilter, page: number) {
 
 function filterCount(counts: BatchOutcomeCounts, filter: BatchResultFilter) {
   if (filter === "valid") return counts.validEmails;
+  if (filter === "duplicate_email") return counts.duplicateEmails;
   if (filter === "no_valid_email") return counts.noValidEmails;
   if (filter === "errors") return counts.verificationErrors;
   if (filter === "pending") return counts.pendingFounders;

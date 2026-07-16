@@ -17,13 +17,44 @@ type Props = {
 };
 
 async function readJson<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as T & { error?: string };
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    const preview = safeTextPreview(await response.text());
+    const message = preview
+      ? `Request failed (HTTP ${response.status}): ${preview}`
+      : `Request failed (HTTP ${response.status}).`;
+    const error = new Error(message);
+    Object.assign(error, { status: response.status });
+    throw error;
+  }
+
+  let body: T & { error?: string };
+  try {
+    body = (await response.json()) as T & { error?: string };
+  } catch {
+    const error = new Error(`Request failed (HTTP ${response.status}): Invalid JSON response.`);
+    Object.assign(error, { status: response.status });
+    throw error;
+  }
+
   if (!response.ok) {
     const error = new Error(body.error ?? "Verification request failed.");
     Object.assign(error, { status: response.status });
     throw error;
   }
   return body;
+}
+
+function safeTextPreview(body: string) {
+  if (/<!doctype|<html|<body/i.test(body)) return "";
+
+  const text = body
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[^\p{L}\p{N}\s.,:;!?()/_-]/gu, "");
+
+  return text.slice(0, 160);
 }
 
 function isCompleted(status: string) {
@@ -268,8 +299,9 @@ export function VerificationControls({
         </div>
       </div>
 
-      <div className="grid gap-px border-t border-slate-200 bg-slate-200 sm:grid-cols-4">
+      <div className="grid gap-px border-t border-slate-200 bg-slate-200 sm:grid-cols-5">
         <ProgressMetric label="Valid" value={progress.validEmails} />
+        <ProgressMetric label="Duplicate email" value={progress.duplicateEmailFounders} />
         <ProgressMetric label="No valid email" value={progress.noValidEmails} />
         <ProgressMetric label="Errors" value={progress.errorFounders} />
         <ProgressMetric label="Remaining" value={progress.remainingFounders} />
