@@ -13,8 +13,9 @@ import type {
 
 const TERMINAL_FOUNDER_STATUSES = new Set([
   "valid",
+  "duplicate_email",
   "no_valid_email",
-  "verification_error",
+  "error",
 ]);
 const ERROR_ATTEMPT_STATUSES = new Set([
   "error",
@@ -24,6 +25,7 @@ const ERROR_ATTEMPT_STATUSES = new Set([
   "malformed_response",
 ]);
 const PROCESSING_STALE_AFTER_MS = 3 * 60 * 1000;
+const UNIQUE_SELECTED_EMAIL_CONSTRAINT = "fev_unique_selected_email";
 
 type CandidateType = "first_name" | "last_name";
 
@@ -52,6 +54,50 @@ export class VerificationStateError extends Error {
   ) {
     super(message);
   }
+}
+
+type SupabaseErrorDetails = {
+  code?: string;
+  details?: string;
+  hint?: string;
+  message?: string;
+};
+
+function logSupabaseError(operation: string, error: SupabaseErrorDetails) {
+  console.error("[verification] Supabase operation failed", {
+    operation,
+    code: error.code ?? "unknown",
+    message: error.message ?? "Unknown Supabase error",
+  });
+}
+
+function throwSupabaseError(
+  operation: string,
+  error: SupabaseErrorDetails,
+  clientMessage: string,
+): never {
+  logSupabaseError(operation, error);
+  throw new Error(clientMessage);
+}
+
+function isDuplicateSelectedEmailError(error: SupabaseErrorDetails) {
+  if (error.code !== "23505") return false;
+
+  return [error.message, error.details, error.hint].some((value) =>
+    value?.includes(UNIQUE_SELECTED_EMAIL_CONSTRAINT),
+  );
+}
+
+function logDuplicateSelectedEmailReconciliation(
+  batchId: string,
+  founderId: string,
+) {
+  console.info("[verification] Duplicate selected-email conflict reconciled", {
+    batchId,
+    founderId,
+    code: "23505",
+    constraint: UNIQUE_SELECTED_EMAIL_CONSTRAINT,
+  });
 }
 
 function isTerminalFounderStatus(status: string) {
@@ -128,7 +174,9 @@ async function getBatch(batchId: string) {
     .eq("id", batchId)
     .maybeSingle();
 
-  if (error) throw new Error("Could not load the verification batch.");
+  if (error) {
+    throwSupabaseError("load verification batch", error, "Could not load the verification batch.");
+  }
   if (!data) throw new VerificationStateError("Batch not found.", 404);
   return data;
 }
@@ -153,21 +201,27 @@ async function updateFounderValid(
     .eq("batch_id", batchId)
     .eq("status", "pending");
 
-  if (error) throw new Error("Could not save the valid founder result.");
+  if (error) {
+    if (isDuplicateSelectedEmailError(error)) {
+      logDuplicateSelectedEmailReconciliation(batchId, founderId);
+      await updateFounderDuplicateEmail(batchId, founderId);
+      return;
+    }
+    throwSupabaseError("save valid founder result", error, "Could not save the valid founder result.");
+  }
 }
 
-async function updateFounderTerminal(
+async function updateFounderDuplicateEmail(
   batchId: string,
   founderId: string,
-  status: "no_valid_email" | "verification_error",
 ) {
   const { error } = await getSupabaseAdmin()
     .from("fev_founders")
     .update({
       selected_email: null,
       selected_pattern: null,
-      status,
-      verification_status: status === "verification_error" ? "error" : "no_valid_email",
+      status: "duplicate_email",
+      verification_status: "valid",
       is_safe_to_send: false,
       updated_at: new Date().toISOString(),
     })
@@ -175,7 +229,37 @@ async function updateFounderTerminal(
     .eq("batch_id", batchId)
     .eq("status", "pending");
 
-  if (error) throw new Error("Could not save the founder verification result.");
+  if (error) {
+    throwSupabaseError(
+      "save duplicate selected-email founder result",
+      error,
+      "Could not save the duplicate email founder result.",
+    );
+  }
+}
+
+async function updateFounderTerminal(
+  batchId: string,
+  founderId: string,
+  status: "no_valid_email" | "error",
+) {
+  const { error } = await getSupabaseAdmin()
+    .from("fev_founders")
+    .update({
+      selected_email: null,
+      selected_pattern: null,
+      status,
+      verification_status: status === "error" ? "error" : "no_valid_email",
+      is_safe_to_send: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", founderId)
+    .eq("batch_id", batchId)
+    .eq("status", "pending");
+
+  if (error) {
+    throwSupabaseError("save terminal founder result", error, "Could not save the founder verification result.");
+  }
 }
 
 async function loadAttemptsForFounder(founderId: string) {
@@ -187,7 +271,9 @@ async function loadAttemptsForFounder(founderId: string) {
     .eq("founder_id", founderId)
     .order("attempted_at", { ascending: true });
 
-  if (error) throw new Error("Could not load verification attempts.");
+  if (error) {
+    throwSupabaseError("load founder verification attempts", error, "Could not load verification attempts.");
+  }
   return (data ?? []) as AttemptForVerification[];
 }
 
@@ -213,9 +299,11 @@ async function expireStaleAttempt(
     .select("id")
     .maybeSingle();
 
-  if (error) throw new Error("Could not close a stale verification attempt.");
+  if (error) {
+    throwSupabaseError("close stale verification attempt", error, "Could not close a stale verification attempt.");
+  }
   if (data) {
-    await updateFounderTerminal(batchId, founderId, "verification_error");
+    await updateFounderTerminal(batchId, founderId, "error");
   }
 }
 
@@ -233,6 +321,8 @@ export async function getVerificationProgress(
   ]);
 
   if (batchResult.error || foundersResult.error) {
+    if (batchResult.error) logSupabaseError("load verification progress batch", batchResult.error);
+    if (foundersResult.error) logSupabaseError("load verification progress founders", foundersResult.error);
     throw new Error("Could not load verification progress.");
   }
   if (!batchResult.data) {
@@ -258,16 +348,21 @@ export async function getVerificationProgress(
       .in("founder_id", founderIds)
       .order("attempted_at", { ascending: false });
 
-    if (error) throw new Error("Could not load verification attempts.");
+    if (error) {
+      throwSupabaseError("load verification progress attempts", error, "Could not load verification attempts.");
+    }
     attempts = data ?? [];
   }
 
   const validEmails = founders.filter((founder) => founder.status === "valid").length;
+  const duplicateEmailFounders = founders.filter(
+    (founder) => founder.status === "duplicate_email",
+  ).length;
   const noValidEmails = founders.filter(
     (founder) => founder.status === "no_valid_email",
   ).length;
   const errorFounders = founders.filter(
-    (founder) => founder.status === "verification_error",
+    (founder) => founder.status === "error",
   ).length;
   const processedFounders = founders.filter((founder) =>
     isTerminalFounderStatus(founder.status),
@@ -286,6 +381,7 @@ export async function getVerificationProgress(
     processedFounders,
     remainingFounders: Math.max(totalFounders - processedFounders, 0),
     validEmails,
+    duplicateEmailFounders,
     noValidEmails,
     errorFounders,
     attemptCount: attempts.length,
@@ -311,6 +407,7 @@ async function recomputeBatch(batchId: string) {
   ]);
 
   if (foundersResult.error) {
+    logSupabaseError("load founders for batch totals", foundersResult.error);
     throw new Error("Could not recompute batch verification totals.");
   }
 
@@ -320,7 +417,7 @@ async function recomputeBatch(batchId: string) {
     (founder) => founder.status === "no_valid_email",
   ).length;
   const hasErrors = founders.some(
-    (founder) => founder.status === "verification_error",
+    (founder) => founder.status === "error",
   );
   const allTerminal = founders.every((founder) =>
     isTerminalFounderStatus(founder.status),
@@ -342,7 +439,9 @@ async function recomputeBatch(batchId: string) {
     })
     .eq("id", batchId);
 
-  if (error) throw new Error("Could not update batch verification totals.");
+  if (error) {
+    throwSupabaseError("update batch verification totals", error, "Could not update batch verification totals.");
+  }
   return getVerificationProgress(batchId);
 }
 
@@ -371,7 +470,9 @@ export async function startBatchVerification(batchId: string) {
     .eq("id", batchId)
     .in("status", ["uploaded", "parsed"]);
 
-  if (error) throw new Error("Could not start batch verification.");
+  if (error) {
+    throwSupabaseError("start batch verification", error, "Could not start batch verification.");
+  }
   await reconcileSavedConclusiveAttempts(batchId);
   return recomputeBatch(batchId);
 }
@@ -410,7 +511,9 @@ async function reconcileMalformedPowerAttempts(
       .select("id")
       .maybeSingle();
 
-    if (error) throw new Error("Could not reconcile a saved Reoon result.");
+    if (error) {
+      throwSupabaseError("reconcile saved Reoon result", error, "Could not reconcile a saved Reoon result.");
+    }
     if (data) {
       reconciled[index] = {
         ...attempt,
@@ -431,9 +534,22 @@ async function reconcileSavedConclusiveAttempts(batchId: string) {
     .eq("batch_id", batchId)
     .eq("status", "pending");
 
-  if (error) throw new Error("Could not load saved verification attempts.");
+  if (error) {
+    throwSupabaseError("load pending founders for reconciliation", error, "Could not load saved verification attempts.");
+  }
   for (const founder of founders ?? []) {
-    await reconcileMalformedPowerAttempts(await loadAttemptsForFounder(founder.id));
+    const attempts = await reconcileMalformedPowerAttempts(
+      await loadAttemptsForFounder(founder.id),
+    );
+    const accepted = attempts.find(isAcceptedAttempt);
+    if (accepted) {
+      await updateFounderValid(
+        batchId,
+        founder.id,
+        accepted.candidate_email,
+        accepted.candidate_type,
+      );
+    }
   }
 }
 
@@ -471,7 +587,7 @@ async function reconcileExistingAttempts(
   }
 
   if (attempts.some(isErrorAttempt)) {
-    await updateFounderTerminal(batchId, founder.id, "verification_error");
+    await updateFounderTerminal(batchId, founder.id, "error");
     return { outcome: "terminal" };
   }
 
@@ -521,7 +637,9 @@ export async function processNextCandidate(
     .limit(1)
     .maybeSingle();
 
-  if (founderError) throw new Error("Could not select the next founder.");
+  if (founderError) {
+    throwSupabaseError("select next pending founder", founderError, "Could not select the next founder.");
+  }
   if (!founder) {
     return { progress: await recomputeBatch(batchId), outcome: "complete" };
   }
@@ -564,6 +682,7 @@ export async function processNextCandidate(
     .maybeSingle();
 
   if (reservationError) {
+    logSupabaseError("reserve verification candidate", reservationError);
     if (reservationError.code === "42P10") {
       throw new VerificationStateError(
         "The required verification-attempt uniqueness index is not installed.",
@@ -605,7 +724,9 @@ async function completeReservedVerification(
       .select("id")
       .maybeSingle();
 
-    if (attemptError) throw new Error("Could not save the Reoon result.");
+    if (attemptError) {
+      throwSupabaseError("save Reoon result", attemptError, "Could not save the Reoon result.");
+    }
     if (!savedAttempt) {
       return { progress: await recomputeBatch(batchId), outcome: "busy" };
     }
@@ -618,7 +739,7 @@ async function completeReservedVerification(
         next.candidateType,
       );
     } else if (result.isError) {
-      await updateFounderTerminal(batchId, founder.id, "verification_error");
+      await updateFounderTerminal(batchId, founder.id, "error");
     } else if (
       next.candidateType === "last_name" ||
       !founder.last_candidate_email ||
@@ -643,9 +764,11 @@ async function completeReservedVerification(
       .select("id")
       .maybeSingle();
 
-    if (attemptError) throw new Error("Could not save the Reoon error.");
+    if (attemptError) {
+      throwSupabaseError("save Reoon error", attemptError, "Could not save the Reoon error.");
+    }
     if (savedAttempt) {
-      await updateFounderTerminal(batchId, founder.id, "verification_error");
+      await updateFounderTerminal(batchId, founder.id, "error");
     }
   }
 
@@ -664,12 +787,14 @@ export async function retryFailedVerification(
     .from("fev_founders")
     .select("id, first_candidate_email, last_candidate_email, status")
     .eq("batch_id", batchId)
-    .eq("status", "verification_error")
+    .eq("status", "error")
     .order("source_sheet_name", { ascending: true })
     .order("source_row", { ascending: true })
     .order("id", { ascending: true });
 
-  if (foundersError) throw new Error("Could not load failed verifications.");
+  if (foundersError) {
+    throwSupabaseError("load failed founders", foundersError, "Could not load failed verifications.");
+  }
 
   for (const founder of (failedFounders ?? []) as FounderForVerification[]) {
     const attempts = await loadAttemptsForFounder(founder.id);
@@ -692,7 +817,11 @@ export async function retryFailedVerification(
       .maybeSingle();
 
     if (reservationError) {
-      throw new Error("Could not reserve the failed verification candidate.");
+      throwSupabaseError(
+        "reserve failed verification candidate",
+        reservationError,
+        "Could not reserve the failed verification candidate.",
+      );
     }
     if (!reservation) continue;
 
@@ -706,11 +835,13 @@ export async function retryFailedVerification(
       })
       .eq("id", founder.id)
       .eq("batch_id", batchId)
-      .eq("status", "verification_error")
+      .eq("status", "error")
       .select("id")
       .maybeSingle();
 
-    if (resetError) throw new Error("Could not reset the failed founder.");
+    if (resetError) {
+      throwSupabaseError("reset failed founder", resetError, "Could not reset the failed founder.");
+    }
     if (!resetFounder) {
       return { progress: await getVerificationProgress(batchId), outcome: "busy" };
     }
@@ -719,7 +850,9 @@ export async function retryFailedVerification(
       .from("fev_batches")
       .update({ status: "verifying", updated_at: new Date().toISOString() })
       .eq("id", batch.id);
-    if (batchError) throw new Error("Could not resume batch verification.");
+    if (batchError) {
+      throwSupabaseError("resume batch verification", batchError, "Could not resume batch verification.");
+    }
 
     return completeReservedVerification(
       batchId,

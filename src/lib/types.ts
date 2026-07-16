@@ -70,6 +70,7 @@ export type VerificationProgress = {
   processedFounders: number;
   remainingFounders: number;
   validEmails: number;
+  duplicateEmailFounders: number;
   noValidEmails: number;
   errorFounders: number;
   attemptCount: number;

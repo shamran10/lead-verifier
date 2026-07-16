@@ -11,10 +11,10 @@ export async function POST(
   request: Request,
   context: RouteContext<"/api/batches/[batchId]/verification/retry">,
 ) {
-  const unauthorized = await authorizeCreditSpendingRequest(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const unauthorized = await authorizeCreditSpendingRequest(request);
+    if (unauthorized) return unauthorized;
+
     const { batchId } = await context.params;
     return Response.json(await retryFailedVerification(batchId));
   } catch (error) {
@@ -22,12 +22,7 @@ export async function POST(
       return Response.json({ error: error.message }, { status: error.status });
     }
     return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Could not retry the failed verification.",
-      },
+      { error: "Internal server error." },
       { status: 500 },
     );
   }

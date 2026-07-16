@@ -14,6 +14,7 @@ function getStatusTone(status: string) {
   if (
     [
       "catch_all",
+      "duplicate_email",
       "unknown",
       "role_based",
       "disposable",
@@ -29,7 +30,6 @@ function getStatusTone(status: string) {
   }
   if (
     [
-      "verification_error",
       "completed_with_errors",
       "malformed",
       "malformed_response",

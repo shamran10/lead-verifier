@@ -8,8 +8,9 @@ export type BatchStatus =
 export type FounderStatus =
   | "pending"
   | "valid"
+  | "duplicate_email"
   | "no_valid_email"
-  | "verification_error";
+  | "error";
 
 export type AttemptVerificationStatus =
   | "processing"
