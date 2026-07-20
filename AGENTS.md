@@ -8,7 +8,7 @@ The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and 
 
 ## End-to-end workflow
 
-1. An operator selects the YC or 500 Global source type, chooses an `.xlsx` workbook, and requests a preview. YC is the backward-compatible default.
+1. An operator selects the YC, 500 Global, Techstars, or MassChallenge source type, chooses an `.xlsx` workbook, and requests a preview. YC is the backward-compatible default.
 2. The server validates and parses all usable sheets, extracts up to four founders per company row, normalizes names and domains, and creates first-name and last-name email candidates.
 3. The preview labels founders as ready or duplicate and reports processed sheets, skipped sheets, invalid rows, companies, founders, and duplicates.
 4. After the operator supplies a batch name, import repeats parsing and duplicate classification on the server. It creates one batch and inserts only ready founders.
@@ -38,7 +38,7 @@ The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and 
 - Normalize founder names by removing bracketed notes, transliterating supported characters, removing diacritics and punctuation, and stripping common honorifics and suffixes. The first remaining token is the first name and the last remaining token is the last name.
 - Preserve the source sheet and 1-based source row for traceability.
 - Preview is non-persistent. Import reparses and reclassifies the uploaded file; never trust preview data sent back by the browser.
-- Preview and import accept `sourceType` values `yc`, `500_global`, and `techstars`. A missing value means `yc` for backward compatibility; every other value is rejected server-side.
+- Preview and import accept `sourceType` values `yc`, `500_global`, `techstars`, and `masschallenge`. A missing value means `yc` for backward compatibility; every other value is rejected server-side.
 
 ### Techstars workbook imports
 
@@ -46,6 +46,15 @@ The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and 
 - The server sets `accelerator_name` to `Techstars`; uploaded accelerator-name values are never trusted.
 - Techstars rows require year 2025 or 2026, an eligible company country, and an HTTPS official source on `techstars.com` or its subdomains.
 - Geography uses company headquarters/current country, never the Techstars program location.
+- Batch names are required and limited to 120 characters. Source filenames are stored at no more than 255 characters.
+- If founder insertion fails after batch creation, delete the newly created batch so a partial import is not retained.
+
+### MassChallenge workbook imports
+
+- MassChallenge uses the accelerator workbook contract: `company_name`, `website`, `accelerator_year`, `country`, `source_url`, and at least one supported founder field are required headers.
+- The server sets `accelerator_name` to `MassChallenge`; uploaded accelerator-name values are never trusted.
+- MassChallenge rows require year 2025 or 2026, an eligible company country, and an HTTPS official source on `masschallenge.org` or its subdomains.
+- Geography uses company headquarters/current country, never the MassChallenge program location.
 - Batch names are required and limited to 120 characters. Source filenames are stored at no more than 255 characters.
 - If founder insertion fails after batch creation, delete the newly created batch so a partial import is not retained.
 
@@ -119,7 +128,7 @@ Verification attempts use a separate idempotency key: `(founder_id, candidate_em
 
 The dashboard reports total batches, total founders, pending founders, and recent batches. The batch list shows source file, status, company count, founder count, duplicate count, and creation time.
 
-Batch lists and detail pages also show the batch source. YC founder review retains `yc_batch`; 500 Global review shows accelerator name, batch, year, canonical company country, derived region, and the official source URL for manual auditing.
+Batch lists and detail pages also show the batch source. YC founder review retains `yc_batch`; accelerator-source review shows accelerator name, batch, year, canonical company country, derived region, and the official source URL for manual auditing.
 
 Each batch detail page reports:
 
@@ -152,7 +161,7 @@ Duplicate-email outcome totals are derived from founder rows and are not stored 
 
 ### `fev_batches`
 
-One row per import. Important fields: batch/source names, `source_type`, nullable unique `discovery_run_id`, lifecycle status, total companies, total founders, duplicate founders, valid emails, no-valid emails, and timestamps. Source types are `yc`, `500_global`, and `techstars`. Statuses are `uploaded`, `parsed`, `verifying`, `completed`, and `completed_with_errors`.
+One row per import. Important fields: batch/source names, `source_type`, nullable unique `discovery_run_id`, lifecycle status, total companies, total founders, duplicate founders, valid emails, no-valid emails, and timestamps. Source types are `yc`, `500_global`, `techstars`, and `masschallenge`. Statuses are `uploaded`, `parsed`, `verifying`, `completed`, and `completed_with_errors`.
 
 ## Standalone Techstars lead exporter
 
@@ -160,9 +169,17 @@ The Techstars exporter has three resumable, database-independent stages. `npm ru
 
 `npm run lead:techstars:enrich` reads only Europe/North America companies from Stage 2, performs bounded founder enrichment, and writes `exports/Techstars_2025_2026_Europe_North_America.xlsx`. Only `Ready for Upload` is import-compatible; `Needs Founder Review`, `Excluded`, and `Blocked Sources` are diagnostic. `npm run lead:techstars` runs all three stages in sequence. Every stage supports `--resume` and `--fresh`, and none writes to Supabase, calls Reoon, imports automatically, or fetches LinkedIn pages.
 
+## Standalone MassChallenge lead exporter
+
+The MassChallenge exporter has three resumable, database-independent stages. `npm run lead:masschallenge:discover` validates official 2025/2026 participant, selected-startup, finalist, and winner evidence from the maintained catalog, official MassChallenge indexes, linked official sources, and optional Brave searches restricted to `masschallenge.org`. It retains confirmed roster entries even when website, location, or founder data is missing; deduplicates first by domain and then conservatively by company name; preserves program/year/status/source associations; and writes founder-free derived data to `.cache/masschallenge/discovered-companies.json`.
+
+`npm run lead:masschallenge:filter` reads that dataset, uses company-specific official roster locations first and at most one company website check for unresolved companies to classify geography without collecting founders, then writes `.cache/masschallenge/filtered-companies.json` and `exports/MassChallenge_2025_2026_Companies.xlsx`. Each unresolved-company check has a 20-second deadline. Resume skips completed companies, never retries interrupted or failed DNS/site checks, and preserves uncertain results in `Unresolved Location`. Program locations never establish company location. Its sheets are `Europe and North America`, `Unresolved Location`, `Excluded Geography`, and `Blocked Sources`.
+
+`npm run lead:masschallenge:enrich` reads only Europe/North America companies from Stage 2, performs bounded founder enrichment for every usable company website even when roster geography is already confirmed, and writes `exports/MassChallenge_2025_2026_Europe_North_America.xlsx`. Resume reuses completed entries with real company-page attempts, while legacy location-only Stage 3 entries with a usable website are reclassified as pending founder enrichment. Only `Ready for Upload` is import-compatible; `Needs Founder Review`, `Unresolved Location`, and the combined `Excluded - Blocked Sources` sheet are diagnostic. Excel forbids `/` in worksheet names, so the combined requested “Excluded / Blocked Sources” sheet uses a hyphen. `npm run lead:masschallenge` runs all three stages in sequence. Every stage supports `--resume` and `--fresh`, and none writes to Supabase, calls Reoon, imports automatically, or fetches LinkedIn pages.
+
 ### `fev_founders`
 
-One row per unique imported founder. Stores source location, company metadata, original and normalized identity, parsed first/last names, LinkedIn URL, both candidate emails, selected email and pattern, founder/verification status, safe-to-send decision, export timestamp, and timestamps. YC metadata remains in nullable `yc_batch`. 500 Global metadata uses nullable `accelerator_name`, `accelerator_batch`, `accelerator_year`, `accelerator_region`, and `source_url`; existing historical founders keep these fields null. Founder statuses are `pending`, `valid`, `duplicate_email`, `no_valid_email`, and `error`.
+One row per unique imported founder. Stores source location, company metadata, original and normalized identity, parsed first/last names, LinkedIn URL, both candidate emails, selected email and pattern, founder/verification status, safe-to-send decision, export timestamp, and timestamps. YC metadata remains in nullable `yc_batch`. Accelerator sources use nullable `accelerator_name`, `accelerator_batch`, `accelerator_year`, `accelerator_region`, and `source_url`; existing historical founders keep these fields null. Founder statuses are `pending`, `valid`, `duplicate_email`, `no_valid_email`, and `error`.
 
 ### `fev_verification_attempts`
 
@@ -245,6 +262,9 @@ npm run lead:500global
 npm run lead:techstars:discover
 npm run lead:techstars:filter
 npm run lead:techstars:enrich
+npm run lead:masschallenge:discover
+npm run lead:masschallenge:filter
+npm run lead:masschallenge:enrich
 npm run start
 ```
 
@@ -253,6 +273,7 @@ npm run start
 - `npm run build` performs the production build and is the minimum release verification.
 - `npm run lead:500global` creates the standalone review workbook without database or Reoon activity.
 - `npm run lead:techstars` runs the three-stage Techstars company discovery, geography filtering, and founder-enrichment workflow.
+- `npm run lead:masschallenge` runs the three-stage MassChallenge company discovery, geography filtering, and founder-enrichment workflow.
 - `npm run start` serves an existing production build.
 - `npm run test:500-global` runs the focused country, eligibility, safe-fetch, source extraction, and company-enrichment tests. For workflow changes, also run lint and build, then manually exercise the affected paths against a non-production Supabase/Reoon setup.
 
@@ -274,6 +295,7 @@ This is not the Next.js version assumed by older training material. Next.js 16 h
 - Smartlead-compatible, deduplicated, formula-safe CSV export.
 - Source-specific YC and 500 Global preview/import metadata with company-country eligibility and official-source auditing.
 - Source-aware batch review and source-specific exports that preserve the legacy YC schemas.
+- MassChallenge workbook import and a standalone, resumable three-stage official-source lead exporter.
 - Bounded, resumable 500 Global source processing and company-owned headquarters/founder enrichment with evidence provenance and no automatic downstream verification.
 
 ## Change checklist
