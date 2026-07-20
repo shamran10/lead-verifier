@@ -24,6 +24,7 @@ export type SafeFetchTransportOptions = {
     { robotsUrl: string; robotsText: string | null; checkedAt: string }
   >;
   onRetryAfter?: (url: URL, retryAt: string) => void;
+  signal?: AbortSignal;
 };
 
 type RawResponse = {
@@ -259,6 +260,7 @@ async function requestFollowingRedirects(
       currentUrl,
       maxBytes,
       transport.userAgent ?? USER_AGENT,
+      transport.signal,
     );
     if (![301, 302, 303, 307, 308].includes(response.status)) {
       return { ...response, redirectCount: redirects };
@@ -270,13 +272,28 @@ async function requestFollowingRedirects(
     if (!location) {
       throw new DiscoveryFetchError("The source returned an invalid redirect.", "invalid");
     }
-    const redirected = normalizeDiscoverySourceUrl(
-      new URL(location, currentUrl).toString(),
-    );
-    currentUrl = new URL(redirected.normalizedUrl);
+    currentUrl = normalizeRedirectTarget(location, currentUrl);
     assertAllowedCompanyHost(currentUrl, allowedHost);
   }
   throw new DiscoveryFetchError("The source exceeded the redirect limit.", "invalid");
+}
+
+export function normalizeRedirectTarget(location: string, currentUrl: URL) {
+  const resolved = new URL(location, currentUrl);
+  const redirected = normalizeDiscoverySourceUrl(resolved.toString());
+  const target = new URL(redirected.normalizedUrl);
+  // Discovery URL identity intentionally removes trailing slashes, but an
+  // origin may require one and redirect the slashless path back to it. Keep
+  // that server-provided slash for the actual request to avoid a redirect
+  // normalization loop while retaining every other URL safety check.
+  if (
+    resolved.pathname !== "/" &&
+    resolved.pathname.endsWith("/") &&
+    !target.pathname.endsWith("/")
+  ) {
+    target.pathname += "/";
+  }
+  return target;
 }
 
 function assertPathAllowedByRobots(
@@ -333,12 +350,19 @@ async function requestOnce(
   url: URL,
   maxBytes: number,
   userAgent: string,
+  signal?: AbortSignal,
 ): Promise<RawResponse> {
+  if (signal?.aborted) {
+    throw new DiscoveryFetchError("The source request was cancelled.", "error");
+  }
   let addresses;
   try {
     addresses = await lookup(url.hostname, { all: true, verbatim: true });
   } catch {
     throw new DiscoveryFetchError("The source host could not be resolved.", "error");
+  }
+  if (signal?.aborted) {
+    throw new DiscoveryFetchError("The source request was cancelled.", "error");
   }
   if (!addresses.length) {
     throw new DiscoveryFetchError("The source host could not be resolved.", "error");
@@ -381,13 +405,18 @@ async function requestOnce(
         });
       },
     );
+    const abortRequest = () => req.destroy(new Error("request-aborted"));
+    signal?.addEventListener("abort", abortRequest, { once: true });
     req.setTimeout(REQUEST_TIMEOUT_MS, () => req.destroy(new Error("request-timeout")));
     req.on("error", (error) => {
+      signal?.removeEventListener("abort", abortRequest);
       const message =
         error.message === "response-too-large"
           ? "The source response exceeded the size limit."
           : error.message === "request-timeout"
             ? "The source request timed out."
+            : error.message === "request-aborted"
+              ? "The source request was cancelled."
             : "The source request failed.";
       reject(
         new DiscoveryFetchError(
@@ -402,6 +431,7 @@ async function requestOnce(
         ),
       );
     });
+    req.on("close", () => signal?.removeEventListener("abort", abortRequest));
     req.end();
   });
 }

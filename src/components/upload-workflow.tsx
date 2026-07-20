@@ -132,6 +132,12 @@ export function UploadWorkflow() {
                 value="techstars"
                 onChange={chooseSource}
               />
+              <SourceOption
+                checked={sourceType === "masschallenge"}
+                label="MassChallenge"
+                value="masschallenge"
+                onChange={chooseSource}
+              />
             </div>
           </fieldset>
           <p className="mt-3 text-sm text-slate-600">
@@ -280,6 +286,15 @@ export function UploadWorkflow() {
               Geography is based on the company headquarters/current country,
               not the Techstars program location. Review each official source
               URL before importing. Verification will not start automatically.
+            </div>
+          )}
+
+          {preview.sourceType === "masschallenge" && (
+            <div className="alert alert-warning m-5 sm:m-6">
+              Geography is based on the company headquarters/current country,
+              not the MassChallenge program location. Review each official
+              MassChallenge source URL before importing. Verification will not
+              start automatically.
             </div>
           )}
 
@@ -449,12 +464,18 @@ function sourceDescription(sourceType: SourceType) {
   if (sourceType === "techstars") {
     return "Techstars eligibility uses the company headquarters/current country and official Techstars participation evidence.";
   }
+  if (sourceType === "masschallenge") {
+    return "MassChallenge eligibility uses the company headquarters/current country and official 2025–2026 participation evidence.";
+  }
   return "500 Global eligibility uses the company headquarters/current country. The official source URL must be reviewed manually.";
 }
 
 function sourcePlaceholder(sourceType: SourceType) {
   if (sourceType === "yc") return "e.g. YC S26 founders";
   if (sourceType === "techstars") return "e.g. Techstars 2026 founders";
+  if (sourceType === "masschallenge") {
+    return "e.g. MassChallenge 2026 founders";
+  }
   return "e.g. 500 Global 2026 founders";
 }
 

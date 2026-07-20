@@ -59,7 +59,10 @@ export type CompanyEnrichmentInput = {
   listedCountry?: string | null;
   listedCountryEvidence?: "company_specific" | "ambiguous" | null;
   officialSourceUrl?: string | null;
-  officialRosterAuthority?: "500_global_official" | "techstars_official";
+  officialRosterAuthority?:
+    | "500_global_official"
+    | "techstars_official"
+    | "masschallenge_official";
   sourceFounders?: readonly CompanyFounderSeed[];
   includeFounders?: boolean;
 };
@@ -69,7 +72,11 @@ export type CompanyLocationEvidence = {
   sourceUrl: string | null;
   snippet: string;
   confidence: number;
-  authority: "company_official" | "500_global_official" | "techstars_official";
+  authority:
+    | "company_official"
+    | "500_global_official"
+    | "techstars_official"
+    | "masschallenge_official";
   evidenceType: "json_ld_address" | "explicit_location" | "participant_listing";
 };
 
@@ -130,7 +137,7 @@ export type StandaloneCompanyPageExtraction = {
 
 export async function enrichStandaloneCompany(
   input: CompanyEnrichmentInput,
-  dependencies: { fetchHtml: CompanyEnrichmentFetcher },
+  dependencies: { fetchHtml: CompanyEnrichmentFetcher; maxPages?: number },
 ): Promise<CompanyEnrichmentResult> {
   const warnings: string[] = [];
   const failures: CompanyEnrichmentFailure[] = [];
@@ -138,6 +145,13 @@ export async function enrichStandaloneCompany(
   const pagesAttempted: string[] = [];
   const locationEvidence: CompanyLocationEvidence[] = [];
   const includeFounders = input.includeFounders !== false;
+  const maxPages = Math.max(
+    1,
+    Math.min(
+      COMPANY_ENRICHMENT_MAX_PAGES,
+      Math.floor(dependencies.maxPages ?? COMPANY_ENRICHMENT_MAX_PAGES),
+    ),
+  );
   const founderCandidates: EnrichedCompanyFounder[] = includeFounders
     ? sourceFounderCandidates(input)
     : [];
@@ -155,7 +169,7 @@ export async function enrichStandaloneCompany(
   const attempted = new Set<string>();
   let homepagePlanned = false;
 
-  while (queue.length > 0 && pagesAttempted.length < COMPANY_ENRICHMENT_MAX_PAGES) {
+  while (queue.length > 0 && pagesAttempted.length < maxPages) {
     const requestedUrl = queue.shift()!;
     queued.delete(requestedUrl);
     const requestKey = normalizePageUrl(requestedUrl);

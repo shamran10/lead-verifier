@@ -10,8 +10,13 @@
     "lead:techstars:filter": "tsx scripts/find-techstars-leads.ts --stage=filter",
     "lead:techstars:enrich": "tsx scripts/find-techstars-leads.ts --stage=enrich",
     "lead:techstars": "tsx scripts/find-techstars-leads.ts --stage=all",
+    "lead:masschallenge:discover": "tsx scripts/find-masschallenge-leads.ts --stage=discover",
+    "lead:masschallenge:filter": "tsx scripts/find-masschallenge-leads.ts --stage=filter",
+    "lead:masschallenge:enrich": "tsx scripts/find-masschallenge-leads.ts --stage=enrich",
+    "lead:masschallenge": "tsx scripts/find-masschallenge-leads.ts --stage=all",
     "test:500-global": "node --conditions=react-server --import tsx --test src/lib/500-global/*.test.ts",
     "test:techstars": "node --conditions=react-server --import tsx --test src/lib/techstars/*.test.ts",
+    "test:masschallenge": "node --conditions=react-server --import tsx --test src/lib/masschallenge/*.test.ts",
     "start": "next start",
     "lint": "eslint"
   },

@@ -1,12 +1,18 @@
 export type FounderStatus = "ready" | "duplicate";
 
-export const SOURCE_TYPES = ["yc", "500_global", "techstars"] as const;
+export const SOURCE_TYPES = [
+  "yc",
+  "500_global",
+  "techstars",
+  "masschallenge",
+] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export const SOURCE_LABELS: Record<SourceType, string> = {
   yc: "YC",
   "500_global": "500 Global",
   techstars: "Techstars",
+  masschallenge: "MassChallenge",
 };
 
 export function sourceTypeLabel(sourceType: SourceType) {

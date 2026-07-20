@@ -26,6 +26,7 @@ const APPROVED_ACCELERATOR_SOURCE_HOSTS: Record<
 > = {
   "500_global": ["500.co"],
   techstars: ["techstars.com"],
+  masschallenge: ["masschallenge.org"],
 };
 const FOUNDER_COLUMNS = [
   { name: "founder_name", linkedin: "linkedin_url", role: "founder_role" },
@@ -285,7 +286,7 @@ export async function parseWorkbook(
             invalidRows,
             sheet.sheet,
             sourceRow,
-            `Official ${sourceType === "techstars" ? "Techstars" : "500 Global"} source URL is missing or invalid`,
+            `Official ${acceleratorNameForSource(sourceType)} source URL is missing or invalid`,
           );
         }
         if (normalizedFounders.length === 0) {
@@ -321,8 +322,7 @@ export async function parseWorkbook(
             website,
             normalizedDomain,
             ycBatch: null,
-            acceleratorName:
-              sourceType === "techstars" ? "Techstars" : "500 Global",
+            acceleratorName: acceleratorNameForSource(sourceType),
             acceleratorBatch:
               valueFor(row, headers, "accelerator_batch") || null,
             acceleratorYear,
@@ -441,4 +441,12 @@ export async function parseWorkbook(
     processedSheets,
     skippedSheets,
   };
+}
+
+function acceleratorNameForSource(
+  sourceType: Exclude<SourceType, "yc">,
+) {
+  if (sourceType === "techstars") return "Techstars";
+  if (sourceType === "masschallenge") return "MassChallenge";
+  return "500 Global";
 }
