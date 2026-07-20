@@ -1,5 +1,5 @@
 import { classifyFounders, findExistingFounderKeys } from "@/lib/founder-data";
-import type { PreviewResult } from "@/lib/types";
+import { parseSourceType, type PreviewResult } from "@/lib/types";
 import { parseWorkbook } from "@/lib/workbook";
 
 export const runtime = "nodejs";
@@ -8,12 +8,19 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const sourceType = parseSourceType(formData.get("sourceType"));
 
     if (!(file instanceof File)) {
       return Response.json({ error: "Choose an XLSX file." }, { status: 400 });
     }
+    if (!sourceType) {
+      return Response.json(
+        { error: "Choose a valid import source." },
+        { status: 400 },
+      );
+    }
 
-    const parsed = await parseWorkbook(file);
+    const parsed = await parseWorkbook(file, sourceType);
     const existingKeys = await findExistingFounderKeys(parsed.founders);
     const founders = classifyFounders(parsed.founders, existingKeys);
     const readyFounders = founders.filter((founder) => founder.status === "ready");
@@ -24,6 +31,7 @@ export async function POST(request: Request) {
     ).size;
 
     const result: PreviewResult = {
+      sourceType,
       founders,
       companyCount,
       founderCount: founders.length,

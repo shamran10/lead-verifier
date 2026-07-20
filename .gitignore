@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/.cache/500-global/
+/exports/*.xlsx
 
 # next.js
 /.next/

@@ -29,6 +29,7 @@ export function BatchTable({ batches }: { batches: BatchListItem[] }) {
         <thead>
           <tr>
             <th>Batch</th>
+            <th>Source</th>
             <th>Status</th>
             <th>Companies</th>
             <th>Founders</th>
@@ -45,6 +46,11 @@ export function BatchTable({ batches }: { batches: BatchListItem[] }) {
                 <p className="mt-1 max-w-60 truncate text-xs text-slate-500">
                   {batch.source_file_name}
                 </p>
+              </td>
+              <td>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {batch.source_type === "500_global" ? "500 Global" : "YC"}
+                </span>
               </td>
               <td>
                 <StatusPill status={batch.status} />

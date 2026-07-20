@@ -22,6 +22,7 @@ type Props = {
 const FILTERS: Array<{ value: BatchResultFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "valid", label: "Valid" },
+  { value: "catch_all", label: "Catch-All" },
   { value: "duplicate_email", label: "Duplicate email" },
   { value: "no_valid_email", label: "No valid email" },
   { value: "errors", label: "Errors" },
@@ -52,6 +53,7 @@ export function BatchVerificationResults({
       <div className="results-summary-grid">
         <SummaryCard label="Total founders" value={counts.totalFounders} />
         <SummaryCard label="Valid emails" value={counts.validEmails} tone="success" />
+        <SummaryCard label="Catch-all founders" value={counts.catchAllFounders} tone="warning" />
         <SummaryCard label="Duplicate emails" value={counts.duplicateEmails} tone="warning" />
         <SummaryCard label="No valid email" value={counts.noValidEmails} tone="warning" />
         <SummaryCard label="Verification errors" value={counts.verificationErrors} tone="error" />
@@ -105,6 +107,37 @@ export function BatchVerificationResults({
                   <td>
                     <p className="font-semibold text-slate-800">{founder.company_name}</p>
                     <p className="mt-1 text-xs text-slate-500">{founder.normalized_domain}</p>
+                    {batch.source_type === "yc" ? (
+                      founder.yc_batch && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          YC batch: {founder.yc_batch}
+                        </p>
+                      )
+                    ) : (
+                      <div className="mt-2 max-w-72 text-xs text-slate-500">
+                        <p className="font-semibold text-slate-700">
+                          {founder.accelerator_name ?? "500 Global"}
+                        </p>
+                        <p className="mt-1">
+                          {[founder.accelerator_batch, founder.accelerator_year]
+                            .filter(Boolean)
+                            .join(" · ") || "Cohort not specified"}
+                        </p>
+                        <p className="mt-1">
+                          {founder.country ?? "Unknown country"} · {formatRegion(founder.accelerator_region)}
+                        </p>
+                        {founder.source_url && (
+                          <a
+                            className="mt-1 block truncate font-semibold text-indigo-700 hover:text-indigo-900"
+                            href={founder.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Review official source
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="font-mono text-xs">{founder.first_candidate_email}</td>
                   <td className="font-mono text-xs">{founder.last_candidate_email ?? "—"}</td>
@@ -127,7 +160,10 @@ export function BatchVerificationResults({
                 </tr>
                 <tr className="history-row">
                   <td colSpan={8}>
-                    <VerificationHistory attempts={founder.attempts} />
+                    <VerificationHistory
+                      attempts={founder.attempts}
+                      highlightCatchAll={filter === "catch_all"}
+                    />
                   </td>
                 </tr>
               </Fragment>
@@ -163,9 +199,15 @@ function SummaryCard({
   );
 }
 
-function VerificationHistory({ attempts }: { attempts: VerificationAttemptListItem[] }) {
+function VerificationHistory({
+  attempts,
+  highlightCatchAll,
+}: {
+  attempts: VerificationAttemptListItem[];
+  highlightCatchAll: boolean;
+}) {
   return (
-    <details className="verification-history">
+    <details className="verification-history" open={highlightCatchAll}>
       <summary>
         Verification history <span>({attempts.length})</span>
       </summary>
@@ -173,30 +215,41 @@ function VerificationHistory({ attempts }: { attempts: VerificationAttemptListIt
         <p className="history-empty">No candidate has been checked yet.</p>
       ) : (
         <div className="history-list">
-          {attempts.map((attempt) => (
-            <article className="history-attempt" key={attempt.id}>
-              <div className="history-attempt-heading">
-                <div>
-                  <p className="font-mono text-xs font-semibold text-slate-900">
-                    {attempt.candidate_email}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {formatStatus(attempt.candidate_type)} · {formatProvider(attempt.provider)} · {formatDate(attempt.attempted_at)}
-                  </p>
+          {attempts.map((attempt) => {
+            const isCatchAll =
+              attempt.verification_status === "catch_all" ||
+              attempt.is_catch_all === true;
+            return (
+              <article
+                className={`history-attempt${isCatchAll ? " history-attempt-catch-all" : ""}`}
+                key={attempt.id}
+              >
+                <div className="history-attempt-heading">
+                  <div>
+                    <p className="font-mono text-xs font-semibold text-slate-900">
+                      {attempt.candidate_email}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatStatus(attempt.candidate_type)} · {formatProvider(attempt.provider)} · {formatDate(attempt.attempted_at)}
+                    </p>
+                    {isCatchAll && (
+                      <p className="history-catch-all-label">Catch-all candidate</p>
+                    )}
+                  </div>
+                  <StatusPill status={attempt.verification_status ?? "processing"} />
                 </div>
-                <StatusPill status={attempt.verification_status ?? "processing"} />
-              </div>
-              <dl className="history-flags">
-                <Flag label="Safe to send" value={attempt.is_safe_to_send} />
-                <Flag label="Catch-all" value={attempt.is_catch_all} />
-                <Flag label="Role-based" value={attempt.is_role_based} />
-                <Flag label="Disposable" value={attempt.is_disposable} />
-              </dl>
-              {attempt.error_message && (
-                <p className="history-error">{attempt.error_message}</p>
-              )}
-            </article>
-          ))}
+                <dl className="history-flags">
+                  <Flag label="Safe to send" value={attempt.is_safe_to_send} />
+                  <Flag label="Catch-all" value={attempt.is_catch_all} />
+                  <Flag label="Role-based" value={attempt.is_role_based} />
+                  <Flag label="Disposable" value={attempt.is_disposable} />
+                </dl>
+                {attempt.error_message && (
+                  <p className="history-error">{attempt.error_message}</p>
+                )}
+              </article>
+            );
+          })}
         </div>
       )}
     </details>
@@ -254,6 +307,7 @@ function pageHref(batchId: string, filter: BatchResultFilter, page: number) {
 
 function filterCount(counts: BatchOutcomeCounts, filter: BatchResultFilter) {
   if (filter === "valid") return counts.validEmails;
+  if (filter === "catch_all") return counts.catchAllFounders;
   if (filter === "duplicate_email") return counts.duplicateEmails;
   if (filter === "no_valid_email") return counts.noValidEmails;
   if (filter === "errors") return counts.verificationErrors;
@@ -272,4 +326,10 @@ function formatDate(value: string) {
 
 function formatProvider(value: string) {
   return value.trim().toLowerCase() === "reoon" ? "Reoon" : "Verification provider";
+}
+
+function formatRegion(value: "europe" | "north_america" | null) {
+  if (value === "north_america") return "North America";
+  if (value === "europe") return "Europe";
+  return "Unknown region";
 }

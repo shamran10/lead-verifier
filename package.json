@@ -5,16 +5,21 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "lead:500global": "tsx scripts/find-500-global-leads.ts",
+    "test:500-global": "node --conditions=react-server --import tsx --test src/lib/500-global/*.test.ts",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
+    "cheerio": "^1.2.0",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "read-excel-file": "^9.3.1",
-    "server-only": "^0.0.1"
+    "robots-parser": "^3.0.1",
+    "server-only": "^0.0.1",
+    "write-excel-file": "^2.3.10"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -24,6 +29,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }

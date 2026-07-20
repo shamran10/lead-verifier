@@ -15,6 +15,7 @@ const navigation = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/batches", label: "Batches" },
   { href: "/upload", label: "Upload" },
+  { href: "/500-global", label: "500 Global Lead Finder" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </span>
             </Link>
             <nav aria-label="Main navigation">
-              <ul className="flex items-center gap-1">
+              <ul className="flex flex-wrap items-center justify-center gap-1">
                 {navigation.map((item) => (
                   <li key={item.href}>
                     <Link className="nav-link" href={item.href}>

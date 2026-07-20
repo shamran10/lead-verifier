@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
 import { BatchVerificationResults } from "@/components/batch-verification-results";
-import { SmartleadExportButton } from "@/components/smartlead-export-button";
+import { BatchExportButtons } from "@/components/smartlead-export-button";
 import { StatusPill } from "@/components/status-pill";
 import { VerificationControls } from "@/components/verification-controls";
 import {
@@ -65,14 +65,18 @@ export default async function BatchDetailsPage(
           <div>
             <div className="mb-3 flex items-center gap-3">
               <p className="eyebrow">Batch review</p>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                {batch.source_type === "500_global" ? "500 Global" : "YC"}
+              </span>
               <StatusPill status={batch.status} />
             </div>
             <h1 className="page-title">{batch.batch_name}</h1>
             <p className="page-description">{batch.source_file_name}</p>
           </div>
-          <SmartleadExportButton
+          <BatchExportButtons
             batchId={batch.id}
             validCount={details.counts.validEmails}
+            catchAllCount={details.counts.catchAllFounders}
             initialAuthenticated={authenticated}
             adminPasswordConfigured={isAdminPasswordConfigured()}
           />

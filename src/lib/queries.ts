@@ -2,11 +2,13 @@ import "server-only";
 
 import type { FounderStatus } from "@/lib/database.types";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import type { SourceType } from "@/lib/types";
 
 export type BatchListItem = {
   id: string;
   batch_name: string;
   source_file_name: string;
+  source_type: SourceType;
   status: string;
   total_companies: number;
   total_founders: number;
@@ -22,6 +24,7 @@ export type BatchDetail = BatchListItem & {
 export const BATCH_RESULT_FILTERS = [
   "all",
   "valid",
+  "catch_all",
   "duplicate_email",
   "no_valid_email",
   "errors",
@@ -33,6 +36,7 @@ export type BatchResultFilter = (typeof BATCH_RESULT_FILTERS)[number];
 export type BatchOutcomeCounts = {
   totalFounders: number;
   validEmails: number;
+  catchAllFounders: number;
   duplicateEmails: number;
   noValidEmails: number;
   verificationErrors: number;
@@ -61,6 +65,13 @@ export type FounderListItem = {
   company_name: string;
   founder_name: string;
   normalized_domain: string;
+  yc_batch: string | null;
+  country: string | null;
+  accelerator_name: string | null;
+  accelerator_batch: string | null;
+  accelerator_year: number | null;
+  accelerator_region: "europe" | "north_america" | null;
+  source_url: string | null;
   first_candidate_email: string;
   last_candidate_email: string | null;
   selected_email: string | null;
@@ -85,13 +96,15 @@ type BatchDetailOptions = {
 };
 
 const BATCH_LIST_COLUMNS =
-  "id, batch_name, source_file_name, status, total_companies, total_founders, duplicate_founders, created_at";
+  "id, batch_name, source_file_name, source_type, status, total_companies, total_founders, duplicate_founders, created_at";
 
 const FOUNDER_LIST_COLUMNS =
-  "id, source_sheet_name, source_row, company_name, founder_name, normalized_domain, first_candidate_email, last_candidate_email, selected_email, selected_pattern, status, verification_status, is_safe_to_send";
+  "id, source_sheet_name, source_row, company_name, founder_name, normalized_domain, yc_batch, country, accelerator_name, accelerator_batch, accelerator_year, accelerator_region, source_url, first_candidate_email, last_candidate_email, selected_email, selected_pattern, status, verification_status, is_safe_to_send";
 
 const ATTEMPT_LIST_COLUMNS =
   "id, founder_id, candidate_type, candidate_email, provider, verification_status, is_safe_to_send, is_catch_all, is_role_based, is_disposable, error_message, attempted_at";
+const ID_QUERY_CHUNK_SIZE = 1000;
+const ATTEMPT_MATCH_CHUNK_SIZE = 100;
 
 export function normalizeBatchResultFilter(
   value: string | string[] | undefined,
@@ -185,6 +198,7 @@ export async function getBatchDetails(
     noValidResult,
     errorResult,
     pendingResult,
+    orderedBatchFounderIds,
   ] =
     await Promise.all([
       founderCountQuery(),
@@ -193,6 +207,7 @@ export async function getBatchDetails(
       founderCountQuery("no_valid_email"),
       founderCountQuery("error"),
       founderCountQuery("pending"),
+      loadOrderedBatchFounderIds(batchId),
     ]);
 
   const countError =
@@ -204,9 +219,14 @@ export async function getBatchDetails(
     pendingResult.error;
   if (countError) throw new Error(countError.message);
 
+  const catchAllFounderIds = await loadCatchAllFounderIds(
+    orderedBatchFounderIds,
+  );
+
   const counts: BatchOutcomeCounts = {
     totalFounders: totalResult.count ?? 0,
     validEmails: validResult.count ?? 0,
+    catchAllFounders: catchAllFounderIds.length,
     duplicateEmails: duplicateEmailResult.count ?? 0,
     noValidEmails: noValidResult.count ?? 0,
     verificationErrors: errorResult.count ?? 0,
@@ -217,22 +237,49 @@ export async function getBatchDetails(
   const page = Math.min(requestedPage, totalPages);
   const from = (page - 1) * pageSize;
 
-  let foundersQuery = supabase
-    .from("fev_founders")
-    .select(FOUNDER_LIST_COLUMNS)
-    .eq("batch_id", batchId);
-  const founderStatus = filterToFounderStatus(filter);
-  if (founderStatus) foundersQuery = foundersQuery.eq("status", founderStatus);
+  let founderData: Array<Omit<FounderListItem, "attempts">> = [];
+  let foundersError: { message: string } | null = null;
 
-  const { data: founderData, error: foundersError } = await foundersQuery
-    .order("company_name", { ascending: true })
-    .order("founder_name", { ascending: true })
-    .order("id", { ascending: true })
-    .range(from, from + pageSize - 1);
+  if (filter === "catch_all") {
+    const pageFounderIds = catchAllFounderIds.slice(from, from + pageSize);
+    if (pageFounderIds.length > 0) {
+      const result = await supabase
+        .from("fev_founders")
+        .select(FOUNDER_LIST_COLUMNS)
+        .eq("batch_id", batchId)
+        .in("id", pageFounderIds);
+      foundersError = result.error;
+      const order = new Map(pageFounderIds.map((id, index) => [id, index]));
+      founderData = (
+        (result.data ?? []) as Array<Omit<FounderListItem, "attempts">>
+      ).sort(
+        (left, right) =>
+          (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+          (order.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+      );
+    }
+  } else {
+    let foundersQuery = supabase
+      .from("fev_founders")
+      .select(FOUNDER_LIST_COLUMNS)
+      .eq("batch_id", batchId);
+    const founderStatus = filterToFounderStatus(filter);
+    if (founderStatus) foundersQuery = foundersQuery.eq("status", founderStatus);
+
+    const result = await foundersQuery
+      .order("company_name", { ascending: true })
+      .order("founder_name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    foundersError = result.error;
+    founderData = (result.data ?? []) as Array<
+      Omit<FounderListItem, "attempts">
+    >;
+  }
 
   if (foundersError) throw new Error(foundersError.message);
 
-  const founders = (founderData ?? []) as Array<Omit<FounderListItem, "attempts">>;
+  const founders = founderData;
   const founderIds = founders.map((founder) => founder.id);
   let attempts: VerificationAttemptListItem[] = [];
 
@@ -269,12 +316,13 @@ export async function getBatchDetails(
 
 function filterToFounderStatus(filter: BatchResultFilter): FounderStatus | null {
   if (filter === "errors") return "error";
-  if (filter === "all") return null;
+  if (filter === "all" || filter === "catch_all") return null;
   return filter;
 }
 
 function filteredTotal(counts: BatchOutcomeCounts, filter: BatchResultFilter) {
   if (filter === "valid") return counts.validEmails;
+  if (filter === "catch_all") return counts.catchAllFounders;
   if (filter === "duplicate_email") return counts.duplicateEmails;
   if (filter === "no_valid_email") return counts.noValidEmails;
   if (filter === "errors") return counts.verificationErrors;
@@ -286,6 +334,7 @@ function emptyOutcomeCounts(): BatchOutcomeCounts {
   return {
     totalFounders: 0,
     validEmails: 0,
+    catchAllFounders: 0,
     duplicateEmails: 0,
     noValidEmails: 0,
     verificationErrors: 0,
@@ -295,4 +344,52 @@ function emptyOutcomeCounts(): BatchOutcomeCounts {
 
 function emptyPagination(pageSize: number): BatchPagination {
   return { page: 1, pageSize, totalItems: 0, totalPages: 1 };
+}
+
+async function loadOrderedBatchFounderIds(batchId: string) {
+  const supabase = getSupabaseAdmin();
+  const founderIds: string[] = [];
+
+  for (let offset = 0; ; offset += ID_QUERY_CHUNK_SIZE) {
+    const { data, error } = await supabase
+      .from("fev_founders")
+      .select("id")
+      .eq("batch_id", batchId)
+      .order("company_name", { ascending: true })
+      .order("founder_name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + ID_QUERY_CHUNK_SIZE - 1);
+
+    if (error) throw new Error(error.message);
+    const chunk = data ?? [];
+    founderIds.push(...chunk.map((founder) => founder.id));
+    if (chunk.length < ID_QUERY_CHUNK_SIZE) break;
+  }
+
+  return founderIds;
+}
+
+async function loadCatchAllFounderIds(orderedFounderIds: string[]) {
+  const supabase = getSupabaseAdmin();
+  const matchingFounderIds = new Set<string>();
+
+  for (
+    let index = 0;
+    index < orderedFounderIds.length;
+    index += ATTEMPT_MATCH_CHUNK_SIZE
+  ) {
+    const { data, error } = await supabase
+      .from("fev_verification_attempts")
+      .select("founder_id")
+      .in(
+        "founder_id",
+        orderedFounderIds.slice(index, index + ATTEMPT_MATCH_CHUNK_SIZE),
+      )
+      .or("verification_status.eq.catch_all,is_catch_all.eq.true");
+
+    if (error) throw new Error(error.message);
+    for (const attempt of data ?? []) matchingFounderIds.add(attempt.founder_id);
+  }
+
+  return orderedFounderIds.filter((id) => matchingFounderIds.has(id));
 }
