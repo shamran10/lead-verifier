@@ -10,6 +10,7 @@ import type {
   FounderListItem,
   VerificationAttemptListItem,
 } from "@/lib/queries";
+import { sourceTypeLabel } from "@/lib/types";
 
 type Props = {
   batch: BatchDetail;
@@ -116,7 +117,7 @@ export function BatchVerificationResults({
                     ) : (
                       <div className="mt-2 max-w-72 text-xs text-slate-500">
                         <p className="font-semibold text-slate-700">
-                          {founder.accelerator_name ?? "500 Global"}
+                          {founder.accelerator_name ?? sourceTypeLabel(batch.source_type)}
                         </p>
                         <p className="mt-1">
                           {[founder.accelerator_batch, founder.accelerator_year]

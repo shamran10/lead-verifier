@@ -15,6 +15,7 @@ import {
   normalizeBatchResultFilter,
 } from "@/lib/queries";
 import { getVerificationProgress } from "@/lib/verification";
+import { sourceTypeLabel } from "@/lib/types";
 
 export const metadata = { title: "Batch details" };
 
@@ -66,7 +67,7 @@ export default async function BatchDetailsPage(
             <div className="mb-3 flex items-center gap-3">
               <p className="eyebrow">Batch review</p>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                {batch.source_type === "500_global" ? "500 Global" : "YC"}
+                {sourceTypeLabel(batch.source_type)}
               </span>
               <StatusPill status={batch.status} />
             </div>

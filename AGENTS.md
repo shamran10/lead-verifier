@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Founder Email Verifier is an internal operations application that turns Y Combinator or eligible 500 Global company-and-founder data from an Excel workbook into a deduplicated, verified list of founder email addresses ready for Smartlead. It is designed to protect sending reputation and paid Reoon credits: duplicate founders are not imported, candidates are checked sequentially, and an address is accepted only when Reoon explicitly reports that it is both valid and safe to send.
+Founder Email Verifier is an internal operations application that turns Y Combinator or eligible 500 Global or Techstars company-and-founder data from an Excel workbook into a deduplicated, verified list of founder email addresses ready for Smartlead. It is designed to protect sending reputation and paid Reoon credits: duplicate founders are not imported, candidates are checked sequentially, and an address is accepted only when Reoon explicitly reports that it is both valid and safe to send.
 
 The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and the Reoon Email Verifier Power-mode API. Supabase is accessed from server-only code with the service-role key.
 
@@ -38,7 +38,14 @@ The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and 
 - Normalize founder names by removing bracketed notes, transliterating supported characters, removing diacritics and punctuation, and stripping common honorifics and suffixes. The first remaining token is the first name and the last remaining token is the last name.
 - Preserve the source sheet and 1-based source row for traceability.
 - Preview is non-persistent. Import reparses and reclassifies the uploaded file; never trust preview data sent back by the browser.
-- Preview and import accept `sourceType` values `yc` and `500_global`. A missing value means `yc` for backward compatibility; every other value is rejected server-side.
+- Preview and import accept `sourceType` values `yc`, `500_global`, and `techstars`. A missing value means `yc` for backward compatibility; every other value is rejected server-side.
+
+### Techstars workbook imports
+
+- Techstars uses the accelerator workbook contract: `company_name`, `website`, `accelerator_year`, `country`, `source_url`, and at least one supported founder field are required headers.
+- The server sets `accelerator_name` to `Techstars`; uploaded accelerator-name values are never trusted.
+- Techstars rows require year 2025 or 2026, an eligible company country, and an HTTPS official source on `techstars.com` or its subdomains.
+- Geography uses company headquarters/current country, never the Techstars program location.
 - Batch names are required and limited to 120 characters. Source filenames are stored at no more than 255 characters.
 - If founder insertion fails after batch creation, delete the newly created batch so a partial import is not retained.
 
@@ -74,7 +81,7 @@ A founder's application-level duplicate identity is the pair:
 
 Duplicate classification checks existing records in `fev_founders` and also tracks names already seen within the current workbook. The first unseen occurrence is ready; later occurrences are duplicates. Only ready founders are inserted. Batch reports retain the number skipped as duplicates.
 
-Duplicate identity is global across YC and 500 Global. Do not include `source_type` in the identity or allow the same founder/domain pair to consume verification credits through a different accelerator source.
+Duplicate identity is global across YC, 500 Global, and Techstars. Do not include `source_type` in the identity or allow the same founder/domain pair to consume verification credits through a different accelerator source.
 
 Verification attempts use a separate idempotency key: `(founder_id, candidate_email)`. The database must provide the matching uniqueness constraint/index used by the upsert. A candidate is reserved as `processing` before a Reoon request, preventing concurrent workers or repeated browser requests from spending credits on the same founder candidate.
 
@@ -145,7 +152,13 @@ Duplicate-email outcome totals are derived from founder rows and are not stored 
 
 ### `fev_batches`
 
-One row per import. Important fields: batch/source names, `source_type`, nullable unique `discovery_run_id`, lifecycle status, total companies, total founders, duplicate founders, valid emails, no-valid emails, and timestamps. Source types are `yc` and `500_global`. Statuses are `uploaded`, `parsed`, `verifying`, `completed`, and `completed_with_errors`.
+One row per import. Important fields: batch/source names, `source_type`, nullable unique `discovery_run_id`, lifecycle status, total companies, total founders, duplicate founders, valid emails, no-valid emails, and timestamps. Source types are `yc`, `500_global`, and `techstars`. Statuses are `uploaded`, `parsed`, `verifying`, `completed`, and `completed_with_errors`.
+
+## Standalone Techstars lead exporter
+
+The Techstars exporter has three resumable, database-independent stages. `npm run lead:techstars:discover` validates official 2025/2026 participation evidence from the maintained catalog, paginated Techstars indexes, linked official sources, and optional Brave searches restricted to `techstars.com`; it requires a usable company website, deduplicates companies, and writes founder-free derived data to `.cache/techstars/discovered-companies.json`. `npm run lead:techstars:filter` reads that dataset, uses company-specific official roster locations first and up to five same-origin company pages second to classify geography without collecting founders, then writes `.cache/techstars/filtered-companies.json` and `exports/Techstars_2025_2026_Companies.xlsx`. Participant-level city/state and city/province values use explicit US-state and Canadian-province maps; accelerator program names never establish company location. Its sheets are `Europe and North America`, `Unresolved Location`, `Excluded Geography`, and `Blocked Sources`.
+
+`npm run lead:techstars:enrich` reads only Europe/North America companies from Stage 2, performs bounded founder enrichment, and writes `exports/Techstars_2025_2026_Europe_North_America.xlsx`. Only `Ready for Upload` is import-compatible; `Needs Founder Review`, `Excluded`, and `Blocked Sources` are diagnostic. `npm run lead:techstars` runs all three stages in sequence. Every stage supports `--resume` and `--fresh`, and none writes to Supabase, calls Reoon, imports automatically, or fetches LinkedIn pages.
 
 ### `fev_founders`
 
@@ -229,6 +242,9 @@ npm run dev
 npm run lint
 npm run build
 npm run lead:500global
+npm run lead:techstars:discover
+npm run lead:techstars:filter
+npm run lead:techstars:enrich
 npm run start
 ```
 
@@ -236,6 +252,7 @@ npm run start
 - `npm run lint` runs ESLint.
 - `npm run build` performs the production build and is the minimum release verification.
 - `npm run lead:500global` creates the standalone review workbook without database or Reoon activity.
+- `npm run lead:techstars` runs the three-stage Techstars company discovery, geography filtering, and founder-enrichment workflow.
 - `npm run start` serves an existing production build.
 - `npm run test:500-global` runs the focused country, eligibility, safe-fetch, source extraction, and company-enrichment tests. For workflow changes, also run lint and build, then manually exercise the affected paths against a non-production Supabase/Reoon setup.
 

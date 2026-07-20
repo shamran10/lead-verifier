@@ -7,6 +7,7 @@ import {
   type CsvValue,
 } from "@/lib/csv-export";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { isAcceleratorSourceType } from "@/lib/types";
 
 const EXPORT_CHUNK_SIZE = 1000;
 const ATTEMPT_QUERY_CHUNK_SIZE = 100;
@@ -26,7 +27,7 @@ const CSV_COLUMNS = [
   "batch_name",
   "selected_pattern",
 ] as const;
-const GLOBAL_500_COLUMNS = [
+const ACCELERATOR_COLUMNS = [
   ...CSV_COLUMNS,
   "source_type",
   "accelerator_name",
@@ -35,6 +36,10 @@ const GLOBAL_500_COLUMNS = [
   "accelerator_region",
   "source_url",
 ] as const;
+
+export function smartleadColumnsForSource(sourceType: Parameters<typeof isAcceleratorSourceType>[0]) {
+  return isAcceleratorSourceType(sourceType) ? ACCELERATOR_COLUMNS : CSV_COLUMNS;
+}
 
 type ExportFounder = {
   id: string;
@@ -142,7 +147,7 @@ export async function createSmartleadExport(batchId: string) {
       founder.selected_pattern,
     ];
 
-    if (batch.source_type === "500_global") {
+    if (isAcceleratorSourceType(batch.source_type)) {
       row.push(
         batch.source_type,
         founder.accelerator_name,
@@ -165,7 +170,7 @@ export async function createSmartleadExport(batchId: string) {
 
   return {
     csv: createCsv(
-      batch.source_type === "500_global" ? GLOBAL_500_COLUMNS : CSV_COLUMNS,
+      smartleadColumnsForSource(batch.source_type),
       rows,
     ),
     filename: exportFilename("smartlead", batch.batch_name),

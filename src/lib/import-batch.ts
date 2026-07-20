@@ -17,6 +17,29 @@ export type ImportFounderBatchResult = ImportResult & {
   reusedExistingBatch: boolean;
 };
 
+export function buildBatchInsertPayload(input: {
+  batchName: string;
+  sourceFileName: string;
+  sourceType: SourceType;
+  discoveryRunId?: string | null;
+  companyCount: number;
+  founderCount: number;
+  duplicateCount: number;
+}) {
+  return {
+    batch_name: input.batchName,
+    source_file_name: input.sourceFileName,
+    source_type: input.sourceType,
+    discovery_run_id: input.discoveryRunId ?? null,
+    status: "parsed" as const,
+    total_companies: input.companyCount,
+    total_founders: input.founderCount,
+    duplicate_founders: input.duplicateCount,
+    valid_emails: 0,
+    no_valid_emails: 0,
+  };
+}
+
 export async function importFounderBatch(
   input: ImportFounderBatchInput,
 ): Promise<ImportFounderBatchResult> {
@@ -59,18 +82,15 @@ export async function importFounderBatch(
   try {
     const { data: batch, error: batchError } = await supabase
       .from("fev_batches")
-      .insert({
-        batch_name: batchName,
-        source_file_name: sourceFileName,
-        source_type: input.sourceType,
-        discovery_run_id: input.discoveryRunId ?? null,
-        status: "parsed",
-        total_companies: companyCount,
-        total_founders: uniqueFounders.length,
-        duplicate_founders: duplicateCount,
-        valid_emails: 0,
-        no_valid_emails: 0,
-      })
+      .insert(buildBatchInsertPayload({
+        batchName,
+        sourceFileName,
+        sourceType: input.sourceType,
+        discoveryRunId: input.discoveryRunId,
+        companyCount,
+        founderCount: uniqueFounders.length,
+        duplicateCount,
+      }))
       .select("id")
       .single();
 

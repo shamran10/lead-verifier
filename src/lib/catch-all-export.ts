@@ -8,6 +8,7 @@ import {
   type CsvValue,
 } from "@/lib/csv-export";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { isAcceleratorSourceType } from "@/lib/types";
 
 const FOUNDER_QUERY_CHUNK_SIZE = 1000;
 const ATTEMPT_QUERY_CHUNK_SIZE = 100;
@@ -30,7 +31,7 @@ const CATCH_ALL_COLUMNS = [
   "is_catch_all",
   "is_safe_to_send",
 ] as const;
-const GLOBAL_500_CATCH_ALL_COLUMNS = [
+const ACCELERATOR_CATCH_ALL_COLUMNS = [
   ...CATCH_ALL_COLUMNS,
   "source_type",
   "accelerator_name",
@@ -39,6 +40,12 @@ const GLOBAL_500_CATCH_ALL_COLUMNS = [
   "accelerator_region",
   "source_url",
 ] as const;
+
+export function catchAllColumnsForSource(sourceType: Parameters<typeof isAcceleratorSourceType>[0]) {
+  return isAcceleratorSourceType(sourceType)
+    ? ACCELERATOR_CATCH_ALL_COLUMNS
+    : CATCH_ALL_COLUMNS;
+}
 
 const EXCLUDED_STATUSES = new Set<AttemptVerificationStatus>([
   "valid",
@@ -156,7 +163,7 @@ export async function createCatchAllExport(batchId: string) {
       "false",
     ];
 
-    if (batch.source_type === "500_global") {
+    if (isAcceleratorSourceType(batch.source_type)) {
       row.push(
         batch.source_type,
         founder.accelerator_name,
@@ -179,9 +186,7 @@ export async function createCatchAllExport(batchId: string) {
 
   return {
     csv: createCsv(
-      batch.source_type === "500_global"
-        ? GLOBAL_500_CATCH_ALL_COLUMNS
-        : CATCH_ALL_COLUMNS,
+      catchAllColumnsForSource(batch.source_type),
       rows,
     ),
     filename: exportFilename("catch-all", batch.batch_name),

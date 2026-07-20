@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import type { ImportResult, PreviewResult, SourceType } from "@/lib/types";
+import {
+  sourceTypeLabel,
+  type ImportResult,
+  type PreviewResult,
+  type SourceType,
+} from "@/lib/types";
 
 function deriveBatchName(fileName: string) {
   return fileName
@@ -121,12 +126,16 @@ export function UploadWorkflow() {
                 value="500_global"
                 onChange={chooseSource}
               />
+              <SourceOption
+                checked={sourceType === "techstars"}
+                label="Techstars"
+                value="techstars"
+                onChange={chooseSource}
+              />
             </div>
           </fieldset>
           <p className="mt-3 text-sm text-slate-600">
-            {sourceType === "yc"
-              ? "YC imports keep the existing workbook, validation, and export behavior."
-              : "500 Global eligibility uses the company headquarters/current country. The official source URL must be reviewed manually."}
+            {sourceDescription(sourceType)}
           </p>
         </div>
 
@@ -166,11 +175,7 @@ export function UploadWorkflow() {
               className="input"
               value={batchName}
               maxLength={120}
-              placeholder={
-                sourceType === "yc"
-                  ? "e.g. YC S26 founders"
-                  : "e.g. 500 Global 2026 founders"
-              }
+              placeholder={sourcePlaceholder(sourceType)}
               onChange={(event) => setBatchName(event.target.value)}
             />
             <p className="mt-2 text-xs text-slate-500">
@@ -243,7 +248,7 @@ export function UploadWorkflow() {
             <div>
               <h2 className="text-lg font-bold text-slate-950">Import preview</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {preview.sourceType === "yc" ? "Y Combinator" : "500 Global"}
+                {sourceTypeLabel(preview.sourceType)}
                 {" · "}Processed {preview.processedSheets.join(", ")}
               </p>
             </div>
@@ -266,6 +271,14 @@ export function UploadWorkflow() {
             <div className="alert alert-warning m-5 sm:m-6">
               Geography is based on the company headquarters/current country,
               not the accelerator program location. Review each official source
+              URL before importing. Verification will not start automatically.
+            </div>
+          )}
+
+          {preview.sourceType === "techstars" && (
+            <div className="alert alert-warning m-5 sm:m-6">
+              Geography is based on the company headquarters/current country,
+              not the Techstars program location. Review each official source
               URL before importing. Verification will not start automatically.
             </div>
           )}
@@ -427,6 +440,22 @@ function formatRegion(value: "europe" | "north_america" | null) {
   if (value === "north_america") return "North America";
   if (value === "europe") return "Europe";
   return "—";
+}
+
+function sourceDescription(sourceType: SourceType) {
+  if (sourceType === "yc") {
+    return "YC imports keep the existing workbook, validation, and export behavior.";
+  }
+  if (sourceType === "techstars") {
+    return "Techstars eligibility uses the company headquarters/current country and official Techstars participation evidence.";
+  }
+  return "500 Global eligibility uses the company headquarters/current country. The official source URL must be reviewed manually.";
+}
+
+function sourcePlaceholder(sourceType: SourceType) {
+  if (sourceType === "yc") return "e.g. YC S26 founders";
+  if (sourceType === "techstars") return "e.g. Techstars 2026 founders";
+  return "e.g. 500 Global 2026 founders";
 }
 
 function PreviewBadge({ label, value }: { label: string; value: number }) {

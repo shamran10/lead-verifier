@@ -8,7 +8,7 @@ import {
 import { duplicateKey, normalizeFounderName } from "@/lib/founder-normalization";
 import { importFounderBatch } from "@/lib/import-batch";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import type { ParsedFounder } from "@/lib/types";
+import type { ParsedFounder, SourceType } from "@/lib/types";
 
 const QUERY_CHUNK_SIZE = 100;
 
@@ -144,8 +144,10 @@ export async function importApprovedDiscoveryRun(runId: string) {
             : repeatedInRun
               ? "same_run"
               : existing?.source_type === "yc"
-              ? "existing_yc"
-              : "existing_500_global",
+                ? "existing_yc"
+                : existing?.source_type === "500_global"
+                  ? "existing_500_global"
+                  : "unchecked",
           import_status: isImportedIntoBatch ? "imported" : "duplicate",
           existing_fev_founder_id: isImportedIntoBatch ? null : existing?.id ?? null,
           imported_fev_founder_id: imported?.id ?? null,
@@ -236,7 +238,7 @@ async function loadExistingFounders(founders: ParsedFounder[]) {
   const names = [...new Set(founders.map((founder) => founder.normalizedFounderName))];
   const records = new Map<
     string,
-    { id: string; source_type: "yc" | "500_global" }
+    { id: string; source_type: SourceType }
   >();
   for (let index = 0; index < names.length; index += QUERY_CHUNK_SIZE) {
     const { data, error } = await supabase

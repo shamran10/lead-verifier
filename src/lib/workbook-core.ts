@@ -20,7 +20,13 @@ import type {
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const HEADER_SCAN_LIMIT = 25;
-const APPROVED_500_GLOBAL_SOURCE_HOSTS = ["500.co"] as const;
+const APPROVED_ACCELERATOR_SOURCE_HOSTS: Record<
+  Exclude<SourceType, "yc">,
+  readonly string[]
+> = {
+  "500_global": ["500.co"],
+  techstars: ["techstars.com"],
+};
 const FOUNDER_COLUMNS = [
   { name: "founder_name", linkedin: "linkedin_url", role: "founder_role" },
   { name: "founder_2", linkedin: "linkedin_url_2" },
@@ -116,13 +122,16 @@ function parseAcceleratorYear(value: CellValue | null | undefined) {
   return null;
 }
 
-function normalizeOfficial500GlobalSourceUrl(value: string) {
+function normalizeOfficialAcceleratorSourceUrl(
+  value: string,
+  sourceType: Exclude<SourceType, "yc">,
+) {
   if (!value) return null;
 
   try {
     const url = new URL(value);
     const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
-    const approved = APPROVED_500_GLOBAL_SOURCE_HOSTS.some(
+    const approved = APPROVED_ACCELERATOR_SOURCE_HOSTS[sourceType].some(
       (approvedHost) =>
         hostname === approvedHost || hostname.endsWith(`.${approvedHost}`),
     );
@@ -217,14 +226,17 @@ export async function parseWorkbook(
           "role" in columns ? valueFor(row, headers, columns.role) : "",
       })).filter((founder) => founder.name !== "");
 
-      if (sourceType === "500_global") {
+      if (sourceType !== "yc") {
         const acceleratorYear = parseAcceleratorYear(
           rawValueFor(row, headers, "accelerator_year"),
         );
         const countryValue = valueFor(row, headers, "country");
         const country = resolveEligibleCountry(countryValue);
         const sourceUrlValue = valueFor(row, headers, "source_url");
-        const sourceUrl = normalizeOfficial500GlobalSourceUrl(sourceUrlValue);
+        const sourceUrl = normalizeOfficialAcceleratorSourceUrl(
+          sourceUrlValue,
+          sourceType,
+        );
         const normalizedFounders = populatedFounders
           .map((founder) => ({
             ...founder,
@@ -273,7 +285,7 @@ export async function parseWorkbook(
             invalidRows,
             sheet.sheet,
             sourceRow,
-            "Official 500 Global source URL is missing or invalid",
+            `Official ${sourceType === "techstars" ? "Techstars" : "500 Global"} source URL is missing or invalid`,
           );
         }
         if (normalizedFounders.length === 0) {
@@ -309,7 +321,8 @@ export async function parseWorkbook(
             website,
             normalizedDomain,
             ycBatch: null,
-            acceleratorName: "500 Global",
+            acceleratorName:
+              sourceType === "techstars" ? "Techstars" : "500 Global",
             acceleratorBatch:
               valueFor(row, headers, "accelerator_batch") || null,
             acceleratorYear,
@@ -416,7 +429,7 @@ export async function parseWorkbook(
 
   if (processedSheets.length === 0) {
     throw new Error(
-      sourceType === "500_global"
+      sourceType !== "yc"
         ? "No sheet contains the required company_name, website, accelerator_year, country, source_url, and founder headers."
         : "No sheet contains the required company_name, website, and founder headers.",
     );
