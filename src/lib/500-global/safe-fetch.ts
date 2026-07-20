@@ -478,7 +478,7 @@ function logFetchFailure(
 ) {
   const fetchError = error instanceof DiscoveryFetchError ? error : null;
   const diagnostic = error instanceof Error ? error : null;
-  console.error("[500 Global discovery] Safe fetch failed", {
+  console.error("[lead discovery] Safe fetch failed", {
     operation,
     name: sanitizeDiagnostic(fetchError?.diagnosticName ?? diagnostic?.name ?? "Error"),
     code: sanitizeDiagnostic(fetchError?.diagnosticCode),

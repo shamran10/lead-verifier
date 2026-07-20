@@ -1,7 +1,21 @@
 export type FounderStatus = "ready" | "duplicate";
 
-export const SOURCE_TYPES = ["yc", "500_global"] as const;
+export const SOURCE_TYPES = ["yc", "500_global", "techstars"] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
+
+export const SOURCE_LABELS: Record<SourceType, string> = {
+  yc: "YC",
+  "500_global": "500 Global",
+  techstars: "Techstars",
+};
+
+export function sourceTypeLabel(sourceType: SourceType) {
+  return SOURCE_LABELS[sourceType];
+}
+
+export function isAcceleratorSourceType(sourceType: SourceType) {
+  return sourceType !== "yc";
+}
 
 export function parseSourceType(value: unknown): SourceType | null {
   if (value === null || value === undefined) return "yc";

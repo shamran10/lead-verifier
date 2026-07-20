@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "lead:500global": "tsx scripts/find-500-global-leads.ts",
+    "lead:techstars:discover": "tsx scripts/find-techstars-leads.ts --stage=discover",
+    "lead:techstars:filter": "tsx scripts/find-techstars-leads.ts --stage=filter",
+    "lead:techstars:enrich": "tsx scripts/find-techstars-leads.ts --stage=enrich",
+    "lead:techstars": "tsx scripts/find-techstars-leads.ts --stage=all",
     "test:500-global": "node --conditions=react-server --import tsx --test src/lib/500-global/*.test.ts",
+    "test:techstars": "node --conditions=react-server --import tsx --test src/lib/techstars/*.test.ts",
     "start": "next start",
     "lint": "eslint"
   },

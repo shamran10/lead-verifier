@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { StatusPill } from "@/components/status-pill";
 import type { BatchListItem } from "@/lib/queries";
+import { sourceTypeLabel } from "@/lib/types";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
@@ -49,7 +50,7 @@ export function BatchTable({ batches }: { batches: BatchListItem[] }) {
               </td>
               <td>
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {batch.source_type === "500_global" ? "500 Global" : "YC"}
+                  {sourceTypeLabel(batch.source_type)}
                 </span>
               </td>
               <td>

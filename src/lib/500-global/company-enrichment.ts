@@ -59,7 +59,9 @@ export type CompanyEnrichmentInput = {
   listedCountry?: string | null;
   listedCountryEvidence?: "company_specific" | "ambiguous" | null;
   officialSourceUrl?: string | null;
+  officialRosterAuthority?: "500_global_official" | "techstars_official";
   sourceFounders?: readonly CompanyFounderSeed[];
+  includeFounders?: boolean;
 };
 
 export type CompanyLocationEvidence = {
@@ -67,7 +69,7 @@ export type CompanyLocationEvidence = {
   sourceUrl: string | null;
   snippet: string;
   confidence: number;
-  authority: "company_official" | "500_global_official";
+  authority: "company_official" | "500_global_official" | "techstars_official";
   evidenceType: "json_ld_address" | "explicit_location" | "participant_listing";
 };
 
@@ -135,7 +137,10 @@ export async function enrichStandaloneCompany(
   const pages: CompanyEnrichmentPage[] = [];
   const pagesAttempted: string[] = [];
   const locationEvidence: CompanyLocationEvidence[] = [];
-  const founderCandidates: EnrichedCompanyFounder[] = sourceFounderCandidates(input);
+  const includeFounders = input.includeFounders !== false;
+  const founderCandidates: EnrichedCompanyFounder[] = includeFounders
+    ? sourceFounderCandidates(input)
+    : [];
   const homepage = normalizeCompanyHomepage(input.website);
 
   if (!homepage) {
@@ -192,8 +197,10 @@ export async function enrichStandaloneCompany(
           authority: "company_official",
         });
       }
-      for (const founder of extraction.founders) {
-        founderCandidates.push({ ...founder, sourceUrl: finalUrl });
+      if (includeFounders) {
+        for (const founder of extraction.founders) {
+          founderCandidates.push({ ...founder, sourceUrl: finalUrl });
+        }
       }
 
       if (!homepagePlanned) {
@@ -228,12 +235,16 @@ export async function enrichStandaloneCompany(
   }
 
   if (pages.length === 0) {
-    warnings.push("The company site could not be fetched; headquarters and founder data are incomplete.");
+    warnings.push(
+      includeFounders
+        ? "The company site could not be fetched; headquarters and founder data are incomplete."
+        : "The company site could not be fetched; headquarters data is incomplete.",
+    );
   } else if (failures.length > 0) {
     warnings.push("One or more company-owned enrichment pages could not be fetched.");
   }
 
-  return finishResult(
+  const result = finishResult(
     input,
     canonicalHomepage,
     pagesAttempted,
@@ -243,6 +254,17 @@ export async function enrichStandaloneCompany(
     founderCandidates,
     warnings,
   );
+  if (!includeFounders) {
+    return {
+      ...result,
+      founders: [],
+      activeFounders: [],
+      warnings: result.warnings.filter(
+        (warning) => !/founder/i.test(warning),
+      ),
+    };
+  }
+  return result;
 }
 
 export const enrichCompany = enrichStandaloneCompany;
@@ -295,7 +317,7 @@ function finishResult(
             sourceUrl: input.officialSourceUrl ?? null,
             snippet: `The official participant listing gives ${rosterCountry.canonicalName} as the company location.`,
             confidence: 0.72,
-            authority: "500_global_official" as const,
+            authority: input.officialRosterAuthority ?? "500_global_official",
             evidenceType: "participant_listing" as const,
           },
         ]
