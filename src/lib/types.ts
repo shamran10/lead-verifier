@@ -1,5 +1,15 @@
 export type FounderStatus = "ready" | "duplicate";
 
+export const SOURCE_TYPES = ["yc", "500_global"] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+export function parseSourceType(value: unknown): SourceType | null {
+  if (value === null || value === undefined) return "yc";
+  return typeof value === "string" && SOURCE_TYPES.includes(value as SourceType)
+    ? (value as SourceType)
+    : null;
+}
+
 export type ParsedFounder = {
   sourceSheetName: string;
   sourceRow: number;
@@ -7,6 +17,11 @@ export type ParsedFounder = {
   website: string;
   normalizedDomain: string;
   ycBatch: string | null;
+  acceleratorName: string | null;
+  acceleratorBatch: string | null;
+  acceleratorYear: number | null;
+  acceleratorRegion: "europe" | "north_america" | null;
+  sourceUrl: string | null;
   industry: string | null;
   description: string | null;
   country: string | null;
@@ -38,6 +53,7 @@ export type WorkbookParseResult = {
 };
 
 export type PreviewResult = {
+  sourceType: SourceType;
   founders: PreviewFounder[];
   companyCount: number;
   founderCount: number;

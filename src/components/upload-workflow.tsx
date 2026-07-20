@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import type { ImportResult, PreviewResult } from "@/lib/types";
+import type { ImportResult, PreviewResult, SourceType } from "@/lib/types";
 
 function deriveBatchName(fileName: string) {
   return fileName
@@ -22,6 +22,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export function UploadWorkflow() {
+  const [sourceType, setSourceType] = useState<SourceType>("yc");
   const [file, setFile] = useState<File | null>(null);
   const [batchName, setBatchName] = useState("");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -40,6 +41,13 @@ export function UploadWorkflow() {
     }
   }
 
+  function chooseSource(nextSourceType: SourceType) {
+    setSourceType(nextSourceType);
+    setPreview(null);
+    setResult(null);
+    setError(null);
+  }
+
   async function previewWorkbook() {
     if (!file) return;
 
@@ -49,6 +57,7 @@ export function UploadWorkflow() {
     try {
       const formData = new FormData();
       formData.set("file", file);
+      formData.set("sourceType", sourceType);
       const response = await fetch("/api/upload/preview", {
         method: "POST",
         body: formData,
@@ -75,6 +84,7 @@ export function UploadWorkflow() {
       const formData = new FormData();
       formData.set("file", file);
       formData.set("batchName", batchName.trim());
+      formData.set("sourceType", sourceType);
       const response = await fetch("/api/upload/import", {
         method: "POST",
         body: formData,
@@ -95,6 +105,31 @@ export function UploadWorkflow() {
   return (
     <div className="space-y-6">
       <section className="panel p-6 sm:p-8">
+        <div className="mb-6 border-b border-slate-200 pb-6">
+          <fieldset>
+            <legend className="label">Import source</legend>
+            <div className="flex flex-wrap gap-3">
+              <SourceOption
+                checked={sourceType === "yc"}
+                label="Y Combinator"
+                value="yc"
+                onChange={chooseSource}
+              />
+              <SourceOption
+                checked={sourceType === "500_global"}
+                label="500 Global"
+                value="500_global"
+                onChange={chooseSource}
+              />
+            </div>
+          </fieldset>
+          <p className="mt-3 text-sm text-slate-600">
+            {sourceType === "yc"
+              ? "YC imports keep the existing workbook, validation, and export behavior."
+              : "500 Global eligibility uses the company headquarters/current country. The official source URL must be reviewed manually."}
+          </p>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div>
             <label className="label" htmlFor="workbook">
@@ -131,7 +166,11 @@ export function UploadWorkflow() {
               className="input"
               value={batchName}
               maxLength={120}
-              placeholder="e.g. YC S26 founders"
+              placeholder={
+                sourceType === "yc"
+                  ? "e.g. YC S26 founders"
+                  : "e.g. 500 Global 2026 founders"
+              }
               onChange={(event) => setBatchName(event.target.value)}
             />
             <p className="mt-2 text-xs text-slate-500">
@@ -204,7 +243,8 @@ export function UploadWorkflow() {
             <div>
               <h2 className="text-lg font-bold text-slate-950">Import preview</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Processed {preview.processedSheets.join(", ")}
+                {preview.sourceType === "yc" ? "Y Combinator" : "500 Global"}
+                {" · "}Processed {preview.processedSheets.join(", ")}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -222,6 +262,14 @@ export function UploadWorkflow() {
             </div>
           )}
 
+          {preview.sourceType === "500_global" && (
+            <div className="alert alert-warning m-5 sm:m-6">
+              Geography is based on the company headquarters/current country,
+              not the accelerator program location. Review each official source
+              URL before importing. Verification will not start automatically.
+            </div>
+          )}
+
           <div className="table-wrap border-0">
             <table>
               <thead>
@@ -229,6 +277,9 @@ export function UploadWorkflow() {
                   <th>Company</th>
                   <th>Founder</th>
                   <th>Domain</th>
+                  <th>
+                    {preview.sourceType === "yc" ? "YC batch" : "Accelerator"}
+                  </th>
                   <th>First candidate</th>
                   <th>Last candidate</th>
                   <th>Source</th>
@@ -257,6 +308,35 @@ export function UploadWorkflow() {
                       )}
                     </td>
                     <td>{founder.normalizedDomain}</td>
+                    <td>
+                      {preview.sourceType === "yc" ? (
+                        founder.ycBatch ?? "—"
+                      ) : (
+                        <div className="min-w-52 text-xs text-slate-600">
+                          <p className="font-semibold text-slate-900">
+                            {founder.acceleratorName}
+                          </p>
+                          <p className="mt-1">
+                            {[founder.acceleratorBatch, founder.acceleratorYear]
+                              .filter(Boolean)
+                              .join(" · ") || "—"}
+                          </p>
+                          <p className="mt-1">
+                            {founder.country} · {formatRegion(founder.acceleratorRegion)}
+                          </p>
+                          {founder.sourceUrl && (
+                            <a
+                              className="mt-1 block max-w-64 truncate font-semibold text-indigo-700 hover:text-indigo-900"
+                              href={founder.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Review official source
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="font-mono text-xs">
                       {founder.firstCandidateEmail}
                     </td>
@@ -309,6 +389,44 @@ export function UploadWorkflow() {
       )}
     </div>
   );
+}
+
+function SourceOption({
+  checked,
+  label,
+  value,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  value: SourceType;
+  onChange: (value: SourceType) => void;
+}) {
+  return (
+    <label
+      className={`cursor-pointer rounded-lg border px-4 py-3 text-sm font-semibold ${
+        checked
+          ? "border-indigo-500 bg-indigo-50 text-indigo-900"
+          : "border-slate-200 bg-white text-slate-700"
+      }`}
+    >
+      <input
+        className="sr-only"
+        type="radio"
+        name="source-type"
+        value={value}
+        checked={checked}
+        onChange={() => onChange(value)}
+      />
+      {label}
+    </label>
+  );
+}
+
+function formatRegion(value: "europe" | "north_america" | null) {
+  if (value === "north_america") return "North America";
+  if (value === "europe") return "Europe";
+  return "—";
 }
 
 function PreviewBadge({ label, value }: { label: string; value: number }) {

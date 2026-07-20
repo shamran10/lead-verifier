@@ -516,6 +516,25 @@ tbody tr:hover {
   padding: 0.9rem;
 }
 
+.history-attempt-catch-all {
+  border-color: #fbbf24;
+  background: #fffbeb;
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.history-catch-all-label {
+  display: inline-flex;
+  margin-top: 0.45rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  padding: 0.22rem 0.48rem;
+  color: #92400e;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .history-attempt-heading {
   display: flex;
   align-items: flex-start;

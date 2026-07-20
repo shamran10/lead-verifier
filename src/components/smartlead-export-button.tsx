@@ -2,42 +2,68 @@
 
 import { useState } from "react";
 
+type ExportKind = "smartlead" | "catch_all";
+
 type Props = {
   batchId: string;
   validCount: number;
+  catchAllCount: number;
   initialAuthenticated: boolean;
   adminPasswordConfigured: boolean;
 };
 
-export function SmartleadExportButton({
+const EXPORT_CONFIG: Record<
+  ExportKind,
+  { label: string; loadingLabel: string; filename: string; path: string }
+> = {
+  smartlead: {
+    label: "Export Smartlead CSV",
+    loadingLabel: "Preparing Smartlead CSV…",
+    filename: "smartlead-export.csv",
+    path: "smartlead",
+  },
+  catch_all: {
+    label: "Export Catch-All CSV",
+    loadingLabel: "Preparing Catch-All CSV…",
+    filename: "catch-all-export.csv",
+    path: "catch-all",
+  },
+};
+
+export function BatchExportButtons({
   batchId,
   validCount,
+  catchAllCount,
   initialAuthenticated,
   adminPasswordConfigured,
 }: Props) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
   const [password, setPassword] = useState("");
-  const [showAuthentication, setShowAuthentication] = useState(false);
+  const [requestedKind, setRequestedKind] = useState<ExportKind | null>(null);
+  const [downloadingKind, setDownloadingKind] = useState<ExportKind | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const disabled = validCount === 0 || isDownloading;
 
-  async function requestExport() {
-    if (disabled) return;
+  function availableCount(kind: ExportKind) {
+    return kind === "smartlead" ? validCount : catchAllCount;
+  }
+
+  async function requestExport(kind: ExportKind) {
+    if (availableCount(kind) === 0 || downloadingKind) return;
     setError(null);
 
     if (!authenticated) {
-      setShowAuthentication(true);
+      setRequestedKind(kind);
       return;
     }
 
-    await downloadCsv();
+    await downloadCsv(kind);
   }
 
   async function authenticateAndDownload() {
-    if (isAuthenticating || !password) return;
+    if (isAuthenticating || !password || !requestedKind) return;
 
+    const kind = requestedKind;
     setError(null);
     setIsAuthenticating(true);
     try {
@@ -52,8 +78,8 @@ export function SmartleadExportButton({
 
       setAuthenticated(true);
       setPassword("");
-      setShowAuthentication(false);
-      await downloadCsv();
+      setRequestedKind(null);
+      await downloadCsv(kind);
     } catch (authenticationError) {
       setError(errorMessage(authenticationError));
     } finally {
@@ -61,19 +87,20 @@ export function SmartleadExportButton({
     }
   }
 
-  async function downloadCsv() {
+  async function downloadCsv(kind: ExportKind) {
+    const config = EXPORT_CONFIG[kind];
     setError(null);
-    setIsDownloading(true);
+    setDownloadingKind(kind);
     try {
       const response = await fetch(
-        `/api/batches/${encodeURIComponent(batchId)}/export/smartlead`,
+        `/api/batches/${encodeURIComponent(batchId)}/export/${config.path}`,
         { method: "GET", credentials: "same-origin", cache: "no-store" },
       );
 
       if (!response.ok) {
         if (response.status === 401) {
           setAuthenticated(false);
-          setShowAuthentication(true);
+          setRequestedKind(kind);
         }
         throw new Error(await responseError(response));
       }
@@ -82,7 +109,7 @@ export function SmartleadExportButton({
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = responseFilename(response) ?? "smartlead-export.csv";
+      link.download = responseFilename(response) ?? config.filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -90,31 +117,40 @@ export function SmartleadExportButton({
     } catch (downloadError) {
       setError(errorMessage(downloadError));
     } finally {
-      setIsDownloading(false);
+      setDownloadingKind(null);
     }
   }
 
   return (
-    <div className="flex flex-col items-start gap-2 sm:items-end">
-      <button
-        className="button button-success"
-        type="button"
-        disabled={disabled}
-        onClick={requestExport}
-      >
-        {isDownloading ? "Preparing CSV…" : "Export Smartlead CSV"}
-      </button>
+    <div className="flex max-w-xl flex-col items-start gap-2 sm:items-end">
+      <div className="flex flex-wrap gap-3 sm:justify-end">
+        <ExportButton
+          kind="smartlead"
+          count={validCount}
+          downloadingKind={downloadingKind}
+          onClick={requestExport}
+        />
+        <ExportButton
+          kind="catch_all"
+          count={catchAllCount}
+          downloadingKind={downloadingKind}
+          onClick={requestExport}
+        />
+      </div>
 
-      {validCount === 0 && (
-        <p className="text-xs text-slate-500">No valid emails are available to export.</p>
+      <p className="max-w-lg text-left text-xs font-medium text-amber-800 sm:text-right">
+        Catch-all emails are not confirmed safe and should not be treated as verified contacts.
+      </p>
+      {validCount === 0 && catchAllCount === 0 && (
+        <p className="text-xs text-slate-500">No email candidates are available to export.</p>
       )}
-      {error && (
+      {error && !requestedKind && (
         <p className="max-w-sm text-left text-xs font-semibold text-red-700 sm:text-right" role="alert">
           {error}
         </p>
       )}
 
-      {showAuthentication && (
+      {requestedKind && (
         <div className="modal-backdrop" role="presentation">
           <div
             className="modal-card"
@@ -127,7 +163,9 @@ export function SmartleadExportButton({
               Authenticate before exporting
             </h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              The CSV contains verified founder contact data and requires the existing administrator session.
+              {requestedKind === "catch_all"
+                ? "Catch-all candidates are not confirmed safe. Export access requires the existing administrator session."
+                : "The CSV contains verified founder contact data and requires the existing administrator session."}
             </p>
 
             <div className="mt-5">
@@ -163,8 +201,9 @@ export function SmartleadExportButton({
                 type="button"
                 disabled={isAuthenticating}
                 onClick={() => {
-                  setShowAuthentication(false);
+                  setRequestedKind(null);
                   setPassword("");
+                  setError(null);
                 }}
               >
                 Cancel
@@ -182,6 +221,35 @@ export function SmartleadExportButton({
         </div>
       )}
     </div>
+  );
+}
+
+function ExportButton({
+  kind,
+  count,
+  downloadingKind,
+  onClick,
+}: {
+  kind: ExportKind;
+  count: number;
+  downloadingKind: ExportKind | null;
+  onClick: (kind: ExportKind) => Promise<void>;
+}) {
+  const config = EXPORT_CONFIG[kind];
+  const isDownloading = downloadingKind === kind;
+  return (
+    <button
+      className={
+        kind === "smartlead"
+          ? "button button-success"
+          : "button button-secondary border-amber-300 text-amber-900"
+      }
+      type="button"
+      disabled={count === 0 || downloadingKind !== null}
+      onClick={() => void onClick(kind)}
+    >
+      {isDownloading ? config.loadingLabel : config.label}
+    </button>
   );
 }
 
@@ -204,5 +272,5 @@ function responseFilename(response: Response) {
 function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
-    : "Could not create the Smartlead CSV export.";
+    : "Could not create the CSV export.";
 }
