@@ -93,6 +93,7 @@ export type CliOptions = {
   regions: ExporterRegion[];
   resume: boolean;
   fresh: boolean;
+  cacheOnly: boolean;
   sourceConcurrency: 1 | 2;
   companyConcurrency: 1 | 2 | 3;
   hostSpacingMs: number;
@@ -109,7 +110,7 @@ async function main() {
   const options = parseArguments(process.argv.slice(2));
   if (!options) return;
   console.log(
-    `MassChallenge exporter: stage=${options.stage} years=${options.years.join(",")} regions=${options.regions.join(",")} ${options.resume ? "resume" : options.fresh ? "fresh" : "standard"}`,
+    `MassChallenge exporter: stage=${options.stage} years=${options.years.join(",")} regions=${options.regions.join(",")} ${options.cacheOnly ? "cache-only" : options.resume ? "resume" : options.fresh ? "fresh" : "standard"}`,
   );
   if (options.stage === "discover" || options.stage === "all") {
     await runDiscoverStage(options);
@@ -913,6 +914,18 @@ async function processCompany(
     };
   }
 
+  if (options.cacheOnly) {
+    if (
+      cached?.value &&
+      isCompletedFounderEnrichmentCacheValue(company, cached.value)
+    ) {
+      return { company, enrichment: cached.value, enrichmentSkipped: false };
+    }
+    throw new Error(
+      `Cache-only regeneration cannot continue because ${company.companyName} has no complete founder-enrichment result.`,
+    );
+  }
+
   if (options.resume && cached?.status === "completed" && cached.value) {
     if (
       !includeFounders ||
@@ -1411,6 +1424,7 @@ export function parseArguments(values: readonly string[]): CliOptions | null {
     regions: ["europe", "north_america"],
     resume: false,
     fresh: false,
+    cacheOnly: false,
     sourceConcurrency: 1,
     companyConcurrency: 2,
     hostSpacingMs: 2_000,
@@ -1430,6 +1444,10 @@ export function parseArguments(values: readonly string[]): CliOptions | null {
     }
     if (value === "--fresh") {
       options.fresh = true;
+      continue;
+    }
+    if (value === "--cache-only") {
+      options.cacheOnly = true;
       continue;
     }
     if (value.startsWith("--years=")) {
@@ -1473,6 +1491,9 @@ export function parseArguments(values: readonly string[]): CliOptions | null {
   }
   if (options.resume && options.fresh) {
     throw new Error("Use either --resume or --fresh, not both.");
+  }
+  if (options.cacheOnly && (!options.resume || options.stage !== "enrich")) {
+    throw new Error("--cache-only requires --resume and --stage=enrich.");
   }
   return options;
 }
@@ -1531,6 +1552,7 @@ Options:
   --regions=europe,north_america    Eligible regions (default: both)
   --resume                          Reuse completed local cache work
   --fresh                           Safely reset the exporter cache first
+  --cache-only                      Regenerate Stage 3 outputs without network access
   --source-concurrency=1|2          Official-source concurrency (default: 1)
   --company-concurrency=1|2|3       Company enrichment concurrency (default: 2)
   --host-spacing-ms=2000..60000     Minimum same-host delay (default: 2000)

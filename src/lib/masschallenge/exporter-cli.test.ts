@@ -89,6 +89,7 @@ test("standalone CLI accepts safe subsets and conservative limits", () => {
   assert.equal(options.stage, "filter");
   assert.deepEqual(options.regions, ["north_america"]);
   assert.equal(options.resume, true);
+  assert.equal(options.cacheOnly, false);
   assert.equal(options.sourceConcurrency, 2);
   assert.equal(options.companyConcurrency, 3);
   assert.equal(options.hostSpacingMs, 2_500);
@@ -96,6 +97,22 @@ test("standalone CLI accepts safe subsets and conservative limits", () => {
     outputFilename(options),
     "MassChallenge_2026_North_America.xlsx",
   );
+});
+
+test("cache-only regeneration is restricted to resumed Stage 3", () => {
+  const options = parseArguments([
+    "--stage=enrich",
+    "--resume",
+    "--cache-only",
+  ])!;
+  assert.equal(options.cacheOnly, true);
+  for (const values of [
+    ["--cache-only"],
+    ["--stage=filter", "--resume", "--cache-only"],
+    ["--stage=enrich", "--fresh", "--cache-only"],
+  ]) {
+    assert.throws(() => parseArguments(values));
+  }
 });
 
 test("standalone CLI rejects unsafe or contradictory arguments", () => {

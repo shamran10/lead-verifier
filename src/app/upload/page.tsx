@@ -9,7 +9,7 @@ export default function UploadPage() {
       <h1 className="page-title">Upload founder workbook</h1>
       <p className="page-description mb-8 max-w-3xl">
         Import Y Combinator or eligible 2025–2026 500 Global, Techstars, and
-        MassChallenge founder data,
+        MassChallenge, and Antler founder data,
         inspect normalized domains and source metadata, then confirm the import.
         Accelerator workbooks use the same source-aware metadata contract.
         Verification does not run in this step.

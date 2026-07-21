@@ -15,6 +15,7 @@
 /.cache/500-global/
 /.cache/techstars/
 /.cache/masschallenge/
+/.cache/antler/
 /exports/*.xlsx
 
 # next.js

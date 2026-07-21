@@ -138,6 +138,12 @@ export function UploadWorkflow() {
                 value="masschallenge"
                 onChange={chooseSource}
               />
+              <SourceOption
+                checked={sourceType === "antler"}
+                label="Antler"
+                value="antler"
+                onChange={chooseSource}
+              />
             </div>
           </fieldset>
           <p className="mt-3 text-sm text-slate-600">
@@ -295,6 +301,15 @@ export function UploadWorkflow() {
               not the MassChallenge program location. Review each official
               MassChallenge source URL before importing. Verification will not
               start automatically.
+            </div>
+          )}
+
+          {preview.sourceType === "antler" && (
+            <div className="alert alert-warning m-5 sm:m-6">
+              Geography is based on the company headquarters/current country,
+              not an Antler residency, office, or showcase location. Review
+              each official Antler source URL before importing. Verification
+              will not start automatically.
             </div>
           )}
 
@@ -467,6 +482,9 @@ function sourceDescription(sourceType: SourceType) {
   if (sourceType === "masschallenge") {
     return "MassChallenge eligibility uses the company headquarters/current country and official 2025–2026 participation evidence.";
   }
+  if (sourceType === "antler") {
+    return "Antler eligibility uses the company headquarters/current country and official 2025–2026 portfolio or investment evidence.";
+  }
   return "500 Global eligibility uses the company headquarters/current country. The official source URL must be reviewed manually.";
 }
 
@@ -476,6 +494,7 @@ function sourcePlaceholder(sourceType: SourceType) {
   if (sourceType === "masschallenge") {
     return "e.g. MassChallenge 2026 founders";
   }
+  if (sourceType === "antler") return "e.g. Antler 2026 founders";
   return "e.g. 500 Global 2026 founders";
 }
 

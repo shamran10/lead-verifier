@@ -5,6 +5,7 @@ export const SOURCE_TYPES = [
   "500_global",
   "techstars",
   "masschallenge",
+  "antler",
 ] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
@@ -13,6 +14,7 @@ export const SOURCE_LABELS: Record<SourceType, string> = {
   "500_global": "500 Global",
   techstars: "Techstars",
   masschallenge: "MassChallenge",
+  antler: "Antler",
 };
 
 export function sourceTypeLabel(sourceType: SourceType) {
