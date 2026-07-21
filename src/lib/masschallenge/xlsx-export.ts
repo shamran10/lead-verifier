@@ -4,7 +4,10 @@ import path from "node:path";
 import readExcelFile from "read-excel-file/node";
 import writeXlsxFile from "write-excel-file/node";
 
-import { parseWorkbook } from "@/lib/workbook-core";
+import {
+  normalizeWorkbookCellText,
+  parseWorkbook,
+} from "@/lib/workbook-core";
 import { writeWorkbookAtomically } from "@/lib/masschallenge/atomic-workbook";
 
 export const READY_HEADERS = [
@@ -63,6 +66,8 @@ const EXCLUDED_BLOCKED_HEADERS = [
   "discovered_from",
   "manual_review_status",
 ] as const;
+
+const NUMERIC_HEADERS = new Set(["accelerator_year"]);
 
 export const BLOCKED_SOURCE_HEADERS = [
   "source_url",
@@ -307,24 +312,7 @@ function sameCells(
 }
 
 function normalizeCell(value: unknown) {
-  return value === null || value === undefined
-    ? ""
-    : decodeXmlEntities(String(value));
-}
-
-function decodeXmlEntities(value: string) {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, digits: string) =>
-      String.fromCodePoint(Number.parseInt(digits, 16)),
-    )
-    .replace(/&#([0-9]+);/g, (_, digits: string) =>
-      String.fromCodePoint(Number.parseInt(digits, 10)),
-    )
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
+  return normalizeWorkbookCellText(value);
 }
 
 function makeSheet<const T extends readonly string[]>(
@@ -346,11 +334,13 @@ function makeSheet<const T extends readonly string[]>(
     ...rows.map((row, rowIndex) =>
       headers.map((header) => {
         const raw = row[header as T[number]];
-        const value = typeof raw === "number" ? raw : safeCell(raw);
+        const isNumber =
+          NUMERIC_HEADERS.has(header) && typeof raw === "number";
+        const value = isNumber ? raw : safeCell(raw);
         return {
           value,
-          type: typeof value === "number" ? Number : String,
-          align: typeof value === "number" ? "right" as const : "left" as const,
+          type: isNumber ? Number : String,
+          align: isNumber ? "right" as const : "left" as const,
           wrap: true,
           backgroundColor: rowIndex % 2 ? "#F8FAFC" : "#FFFFFF",
           borderColor: "#E2E8F0",
@@ -362,7 +352,7 @@ function makeSheet<const T extends readonly string[]>(
 }
 
 function safeCell(value: unknown) {
-  const text = value === null || value === undefined ? "" : String(value);
+  const text = normalizeWorkbookCellText(value);
   return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
 

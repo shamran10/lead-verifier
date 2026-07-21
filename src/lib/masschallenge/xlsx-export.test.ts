@@ -132,23 +132,23 @@ test("all four founder slots and exact company cells survive XLSX serialization"
   const directory = await mkdtemp(path.join(os.tmpdir(), "fev-500-xlsx-four-"));
   const outputPath = path.join(directory, "four-founders.xlsx");
   const ready = [{
-    company_name: "Four Founder Company",
-    website: "https://four.example",
-    accelerator_batch: "Batch Four",
+    company_name: "Four Founder Company ",
+    website: "https://four.example ",
+    accelerator_batch: "Batch Four ",
     accelerator_year: 2026 as const,
-    country: "Canada",
+    country: "Canada ",
     industry: "Software",
-    description: "Exact metadata",
-    founder_name: "Ada One",
-    founder_role: "Founder & CEO",
-    linkedin_url: "https://www.linkedin.com/in/ada-one",
+    description: "Exact R&D metadata ",
+    founder_name: "Ada One ",
+    founder_role: "Founder & CEO ",
+    linkedin_url: "https://www.linkedin.com/in/ada-one ",
     founder_2: "Bea Two",
     linkedin_url_2: "https://www.linkedin.com/in/bea-two",
     founder_3: "Cal Three",
     linkedin_url_3: "",
     founder_4: "Dee Four",
     linkedin_url_4: "",
-    source_url: "https://masschallenge.org/content/four-founder-company",
+    source_url: "https://masschallenge.org/content/four-founder-company ",
   }];
   const result = await writeMassChallengeWorkbook({
     outputPath,
@@ -165,8 +165,18 @@ test("all four founder slots and exact company cells survive XLSX serialization"
   const row = sheets.find((sheet) => sheet.sheet === "Ready for Upload")?.data[1];
   assert.deepEqual(
     row?.map(decodeTestXmlEntities),
-    EXPECTED_READY_HEADERS.map((header) => ready[0][header]),
+    EXPECTED_READY_HEADERS.map((header) =>
+      typeof ready[0][header] === "number"
+        ? ready[0][header]
+        : String(decodeTestXmlEntities(ready[0][header])).trim(),
+    ),
   );
+  const parsed = await parseWorkbook(
+    new File([await readFile(outputPath)], "masschallenge.xlsx"),
+    "masschallenge",
+  );
+  assert.equal(parsed.founders[0]?.founderRole, "Founder & CEO");
+  assert.equal(parsed.founders[0]?.description, "Exact R&D metadata");
 });
 
 function decodeTestXmlEntities(value: unknown) {

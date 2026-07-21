@@ -27,6 +27,7 @@ const APPROVED_ACCELERATOR_SOURCE_HOSTS: Record<
   "500_global": ["500.co"],
   techstars: ["techstars.com"],
   masschallenge: ["masschallenge.org"],
+  antler: ["antler.co"],
 };
 const FOUNDER_COLUMNS = [
   { name: "founder_name", linkedin: "linkedin_url", role: "founder_role" },
@@ -35,7 +36,7 @@ const FOUNDER_COLUMNS = [
   { name: "founder_4", linkedin: "linkedin_url_4" },
 ] as const;
 
-function cellToString(value: CellValue | null | undefined): string {
+export function normalizeWorkbookCellText(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
@@ -44,7 +45,26 @@ function cellToString(value: CellValue | null | undefined): string {
     return value.toISOString();
   }
 
-  return String(value).trim();
+  return decodeWorkbookXmlEntities(String(value)).trim();
+}
+
+function decodeWorkbookXmlEntities(value: string) {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, digits: string) =>
+      String.fromCodePoint(Number.parseInt(digits, 16)),
+    )
+    .replace(/&#([0-9]+);/g, (_, digits: string) =>
+      String.fromCodePoint(Number.parseInt(digits, 10)),
+    )
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function cellToString(value: CellValue | null | undefined): string {
+  return normalizeWorkbookCellText(value);
 }
 
 function normalizeHeader(value: CellValue | null | undefined) {
@@ -448,5 +468,6 @@ function acceleratorNameForSource(
 ) {
   if (sourceType === "techstars") return "Techstars";
   if (sourceType === "masschallenge") return "MassChallenge";
+  if (sourceType === "antler") return "Antler";
   return "500 Global";
 }

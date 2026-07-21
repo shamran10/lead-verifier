@@ -38,7 +38,7 @@ The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and 
 - Normalize founder names by removing bracketed notes, transliterating supported characters, removing diacritics and punctuation, and stripping common honorifics and suffixes. The first remaining token is the first name and the last remaining token is the last name.
 - Preserve the source sheet and 1-based source row for traceability.
 - Preview is non-persistent. Import reparses and reclassifies the uploaded file; never trust preview data sent back by the browser.
-- Preview and import accept `sourceType` values `yc`, `500_global`, `techstars`, and `masschallenge`. A missing value means `yc` for backward compatibility; every other value is rejected server-side.
+- Preview and import accept `sourceType` values `yc`, `500_global`, `techstars`, `masschallenge`, and `antler`. A missing value means `yc` for backward compatibility; every other value is rejected server-side.
 
 ### Techstars workbook imports
 
@@ -57,6 +57,13 @@ The application uses Next.js 16 App Router, React 19, TypeScript, Supabase, and 
 - Geography uses company headquarters/current country, never the MassChallenge program location.
 - Batch names are required and limited to 120 characters. Source filenames are stored at no more than 255 characters.
 - If founder insertion fails after batch creation, delete the newly created batch so a partial import is not retained.
+
+### Antler workbook imports
+
+- Antler uses the accelerator workbook contract: `company_name`, `website`, `accelerator_year`, `country`, `source_url`, and at least one supported founder field are required headers.
+- The server sets `accelerator_name` to `Antler`; uploaded accelerator-name values are never trusted.
+- Antler rows require year 2025 or 2026, an eligible company country, and an HTTPS official source on `antler.co` or its subdomains.
+- Geography uses company headquarters/current country, never an Antler residency, office, or showcase location.
 
 ## Candidate generation
 
@@ -90,7 +97,7 @@ A founder's application-level duplicate identity is the pair:
 
 Duplicate classification checks existing records in `fev_founders` and also tracks names already seen within the current workbook. The first unseen occurrence is ready; later occurrences are duplicates. Only ready founders are inserted. Batch reports retain the number skipped as duplicates.
 
-Duplicate identity is global across YC, 500 Global, and Techstars. Do not include `source_type` in the identity or allow the same founder/domain pair to consume verification credits through a different accelerator source.
+Duplicate identity is global across YC, 500 Global, Techstars, MassChallenge, and Antler. Do not include `source_type` in the identity or allow the same founder/domain pair to consume verification credits through a different accelerator source.
 
 Verification attempts use a separate idempotency key: `(founder_id, candidate_email)`. The database must provide the matching uniqueness constraint/index used by the upsert. A candidate is reserved as `processing` before a Reoon request, preventing concurrent workers or repeated browser requests from spending credits on the same founder candidate.
 
@@ -161,7 +168,7 @@ Duplicate-email outcome totals are derived from founder rows and are not stored 
 
 ### `fev_batches`
 
-One row per import. Important fields: batch/source names, `source_type`, nullable unique `discovery_run_id`, lifecycle status, total companies, total founders, duplicate founders, valid emails, no-valid emails, and timestamps. Source types are `yc`, `500_global`, `techstars`, and `masschallenge`. Statuses are `uploaded`, `parsed`, `verifying`, `completed`, and `completed_with_errors`.
+One row per import. Important fields: batch/source names, `source_type`, nullable unique `discovery_run_id`, lifecycle status, total companies, total founders, duplicate founders, valid emails, no-valid emails, and timestamps. Source types are `yc`, `500_global`, `techstars`, `masschallenge`, and `antler`. Statuses are `uploaded`, `parsed`, `verifying`, `completed`, and `completed_with_errors`.
 
 ## Standalone Techstars lead exporter
 
@@ -175,7 +182,15 @@ The MassChallenge exporter has three resumable, database-independent stages. `np
 
 `npm run lead:masschallenge:filter` reads that dataset, uses company-specific official roster locations first and at most one company website check for unresolved companies to classify geography without collecting founders, then writes `.cache/masschallenge/filtered-companies.json` and `exports/MassChallenge_2025_2026_Companies.xlsx`. Each unresolved-company check has a 20-second deadline. Resume skips completed companies, never retries interrupted or failed DNS/site checks, and preserves uncertain results in `Unresolved Location`. Program locations never establish company location. Its sheets are `Europe and North America`, `Unresolved Location`, `Excluded Geography`, and `Blocked Sources`.
 
-`npm run lead:masschallenge:enrich` reads only Europe/North America companies from Stage 2, performs bounded founder enrichment for every usable company website even when roster geography is already confirmed, and writes `exports/MassChallenge_2025_2026_Europe_North_America.xlsx`. Resume reuses completed entries with real company-page attempts, while legacy location-only Stage 3 entries with a usable website are reclassified as pending founder enrichment. Only `Ready for Upload` is import-compatible; `Needs Founder Review`, `Unresolved Location`, and the combined `Excluded - Blocked Sources` sheet are diagnostic. Excel forbids `/` in worksheet names, so the combined requested “Excluded / Blocked Sources” sheet uses a hyphen. `npm run lead:masschallenge` runs all three stages in sequence. Every stage supports `--resume` and `--fresh`, and none writes to Supabase, calls Reoon, imports automatically, or fetches LinkedIn pages.
+`npm run lead:masschallenge:enrich` reads only Europe/North America companies from Stage 2, performs bounded founder enrichment for every usable company website even when roster geography is already confirmed, and writes `exports/MassChallenge_2025_2026_Europe_North_America.xlsx`. Resume reuses completed entries with real company-page attempts, while legacy location-only Stage 3 entries with a usable website are reclassified as pending founder enrichment. After enrichment is complete, `npm run lead:masschallenge:enrich -- --resume --cache-only` regenerates and validates the workbook strictly from cached results without retrying failed entries or making network requests. Workbook text cells are explicitly serialized as strings and normalized identically before writing, round-trip validation, and upload parsing. Only `Ready for Upload` is import-compatible; `Needs Founder Review`, `Unresolved Location`, and the combined `Excluded - Blocked Sources` sheet are diagnostic. Excel forbids `/` in worksheet names, so the combined requested “Excluded / Blocked Sources” sheet uses a hyphen. `npm run lead:masschallenge` runs all three stages in sequence. Every stage supports `--resume` and `--fresh`, and none writes to Supabase, calls Reoon, imports automatically, or fetches LinkedIn pages.
+
+## Standalone Antler lead exporter
+
+The Antler exporter is a resumable, local-only three-stage workflow. `npm run lead:antler:discover` processes the public Antler portfolio directory, verified showcase and investment pages, official indexes, and optional Brave searches restricted to `antler.co`, while respecting Antler robots rules and at least ten seconds between requests to that host. It writes `.cache/antler/discovered-companies.json` without requiring founders, a website, or confirmed geography.
+
+`npm run lead:antler:filter` gives company-specific target-year Antler card countries priority, otherwise checks up to five same-origin company pages for explicit current headquarters evidence. It writes `.cache/antler/filtered-companies.json` and `exports/Antler_2025_2026_Companies.xlsx`; program, showcase, office, founder, and ccTLD locations never establish company geography.
+
+`npm run lead:antler:enrich` checks only eligible Europe/North America companies, uses explicit full-name official showcase founders plus up to five same-origin company pages, and writes `exports/Antler_2025_2026_Europe_North_America.xlsx`. Only `Ready for Upload` is import-compatible. Every stage supports `--resume` and `--fresh`; no stage writes to Supabase, calls Reoon, imports automatically, or fetches LinkedIn pages.
 
 ### `fev_founders`
 
@@ -265,6 +280,9 @@ npm run lead:techstars:enrich
 npm run lead:masschallenge:discover
 npm run lead:masschallenge:filter
 npm run lead:masschallenge:enrich
+npm run lead:antler:discover
+npm run lead:antler:filter
+npm run lead:antler:enrich
 npm run start
 ```
 
@@ -274,6 +292,7 @@ npm run start
 - `npm run lead:500global` creates the standalone review workbook without database or Reoon activity.
 - `npm run lead:techstars` runs the three-stage Techstars company discovery, geography filtering, and founder-enrichment workflow.
 - `npm run lead:masschallenge` runs the three-stage MassChallenge company discovery, geography filtering, and founder-enrichment workflow.
+- `npm run lead:antler` runs the three-stage Antler company discovery, geography filtering, and founder-enrichment workflow.
 - `npm run start` serves an existing production build.
 - `npm run test:500-global` runs the focused country, eligibility, safe-fetch, source extraction, and company-enrichment tests. For workflow changes, also run lint and build, then manually exercise the affected paths against a non-production Supabase/Reoon setup.
 
@@ -296,6 +315,7 @@ This is not the Next.js version assumed by older training material. Next.js 16 h
 - Source-specific YC and 500 Global preview/import metadata with company-country eligibility and official-source auditing.
 - Source-aware batch review and source-specific exports that preserve the legacy YC schemas.
 - MassChallenge workbook import and a standalone, resumable three-stage official-source lead exporter.
+- Antler workbook import and a standalone, robots-aware three-stage official-source lead exporter.
 - Bounded, resumable 500 Global source processing and company-owned headquarters/founder enrichment with evidence provenance and no automatic downstream verification.
 
 ## Change checklist

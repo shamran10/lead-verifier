@@ -62,7 +62,8 @@ export type CompanyEnrichmentInput = {
   officialRosterAuthority?:
     | "500_global_official"
     | "techstars_official"
-    | "masschallenge_official";
+    | "masschallenge_official"
+    | "antler_official";
   sourceFounders?: readonly CompanyFounderSeed[];
   includeFounders?: boolean;
 };
@@ -76,7 +77,8 @@ export type CompanyLocationEvidence = {
     | "company_official"
     | "500_global_official"
     | "techstars_official"
-    | "masschallenge_official";
+    | "masschallenge_official"
+    | "antler_official";
   evidenceType: "json_ld_address" | "explicit_location" | "participant_listing";
 };
 
